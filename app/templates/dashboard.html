@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ambulance Dispatch Dashboard</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  #map { height: 520px; border-radius: 6px; }
+  .stat { font-size: 1.8rem; font-weight: 600; }
+  body { background: #f4f6f8; }
+</style>
+</head>
+<body>
+<nav class="navbar navbar-dark bg-danger mb-3">
+  <div class="container-fluid"><span class="navbar-brand mb-0 h1">Ambulance Dispatch Route Optimizer</span>
+    <span class="text-white small text-end">
+      <a class="text-white me-2" href="/analytics">Analytics</a>
+      <a class="text-white me-2" href="/hotspot-map" target="_blank" rel="noopener">Hotspot map</a>
+      <span id="who"></span> <a class="text-white ms-1" href="/logout">Logout</a><br><span id="updated"></span></span></div>
+</nav>
+
+<div class="container-fluid">
+  <!-- summary cards -->
+  <div class="row g-3 mb-3 text-center" id="cards"></div>
+
+  <div class="row g-3">
+    <!-- map -->
+    <div class="col-lg-8">
+      <div class="card"><div class="card-body">
+        <div class="d-flex justify-content-between mb-2">
+          <h6 class="mb-0">Live map <small class="text-muted">(click the map to set an incident location)</small></h6>
+          <div class="d-flex gap-1 flex-wrap justify-content-end">
+            <select id="method" class="form-select form-select-sm w-auto" title="Clustering method">
+              <option value="dbscan">DBSCAN</option><option value="kmeans">K-Means</option></select>
+            <input id="kval" type="number" min="2" max="8" value="3" class="form-control form-control-sm d-none" style="width:70px" title="Number of clusters (k)">
+            <button class="btn btn-sm btn-outline-danger" id="hotspotBtn">Show demand hotspots</button></div>
+        </div>
+        <div id="map"></div>
+        <div class="small text-muted mt-2">
+          Roads: <span style="color:#198754">&#9644;</span> low traffic
+          <span style="color:#fd7e14">&#9644;</span> medium
+          <span style="color:#dc3545">&#9644;</span> heavy
+          <span style="color:#6c757d">- - -</span> closed
+        </div>
+      </div></div>
+    </div>
+
+    <!-- forms -->
+    <div class="col-lg-4">
+      <div class="card mb-3"><div class="card-body">
+        <h6>Report an emergency</h6>
+        <div class="row g-2">
+          <div class="col-6"><input id="lat" class="form-control form-control-sm" placeholder="Latitude"></div>
+          <div class="col-6"><input id="lon" class="form-control form-control-sm" placeholder="Longitude"></div>
+          <div class="col-6">
+            <select id="etype" class="form-select form-select-sm">
+              <option value="accident">Accident</option><option value="cardiac">Cardiac</option>
+              <option value="child">Child / pediatric</option><option value="general">General</option>
+            </select></div>
+          <div class="col-6">
+            <select id="sev" class="form-select form-select-sm">
+              <option value="1">Severity 1</option><option value="2">Severity 2</option>
+              <option value="3" selected>Severity 3</option><option value="4">Severity 4</option>
+              <option value="5">Severity 5</option></select></div>
+          <div class="col-12"><button class="btn btn-danger btn-sm w-100" id="dispatchBtn">Dispatch ambulance</button></div>
+          <div class="col-7"><div class="form-check small"><input class="form-check-input" type="checkbox" id="auto" checked>
+            <label class="form-check-label" for="auto">Drive the ambulance live</label></div></div>
+          <div class="col-5"><select id="speed" class="form-select form-select-sm" title="Simulation speed">
+            <option value="1">Real time</option><option value="10" selected>10x faster</option><option value="30">30x faster</option></select></div>
+        </div>
+        <div id="msg" class="mt-2"></div>
+      </div></div>
+
+      <div class="card mb-3 d-none" data-roles="admin"><div class="card-body">
+        <h6>Traffic and road conditions <small class="text-muted">(admin)</small></h6>
+        <div class="row g-2">
+          <div class="col-12"><select id="road" class="form-select form-select-sm"></select></div>
+          <div class="col-6"><select id="traffic" class="form-select form-select-sm">
+            <option value="LOW">Traffic: low</option><option value="MEDIUM">Traffic: medium</option>
+            <option value="HEAVY">Traffic: heavy</option></select></div>
+          <div class="col-6"><select id="cond" class="form-select form-select-sm">
+            <option value="GOOD">Condition: good</option><option value="POOR">Condition: poor</option>
+            <option value="CLOSED">Condition: closed</option></select></div>
+          <div class="col-12"><button class="btn btn-outline-dark btn-sm w-100" id="roadBtn">Apply to road</button></div>
+          <div class="col-12 form-check form-switch ms-2">
+            <input class="form-check-input" type="checkbox" id="autoTraffic">
+            <label class="form-check-label small" for="autoTraffic">Automatic rush-hour traffic (08-10, 17-20)
+              <span id="rushNow" class="badge text-bg-secondary ms-1"></span></label></div>
+          <div class="col-12"><button class="btn btn-outline-secondary btn-sm w-100" id="recheckBtn">Re-check routes of active trips</button></div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3 d-none" data-roles="admin">
+    <div class="col-md-4"><div class="card h-100"><div class="card-body">
+      <h6>Register ambulance</h6><div class="row g-2">
+        <div class="col-12"><input id="avn" class="form-control form-control-sm" placeholder="Vehicle number, e.g. AP21-1004"></div>
+        <div class="col-6"><input id="alat" class="form-control form-control-sm" placeholder="Latitude"></div>
+        <div class="col-6"><input id="alon" class="form-control form-control-sm" placeholder="Longitude"></div>
+        <div class="col-12"><button class="btn btn-outline-dark btn-sm w-100" id="addAmb">Add ambulance</button></div>
+        <div class="col-12 small text-muted">Tip: click the map, then use "Use map point".
+          <a href="#" id="useA">Use map point</a></div>
+        <div class="col-12" id="ambMsg"></div></div></div></div></div>
+    <div class="col-md-4"><div class="card h-100"><div class="card-body">
+      <h6>Register hospital</h6><div class="row g-2">
+        <div class="col-12"><input id="hname" class="form-control form-control-sm" placeholder="Hospital name"></div>
+        <div class="col-6"><input id="hlat" class="form-control form-control-sm" placeholder="Latitude"></div>
+        <div class="col-6"><input id="hlon" class="form-control form-control-sm" placeholder="Longitude"></div>
+        <div class="col-6"><input id="hbeds" type="number" min="0" class="form-control form-control-sm" placeholder="Beds"></div>
+        <div class="col-6"><input id="hspec" class="form-control form-control-sm" placeholder="trauma,cardiac"></div>
+        <div class="col-12"><button class="btn btn-outline-dark btn-sm w-100" id="addHosp">Add hospital</button></div>
+        <div class="col-12 small"><a href="#" id="useH">Use map point</a></div>
+        <div class="col-12" id="hospMsg"></div></div></div></div></div>
+    <div class="col-md-4"><div class="card h-100"><div class="card-body">
+      <h6>Hospital status and beds</h6><div class="row g-2">
+        <div class="col-12"><select id="hsel" class="form-select form-select-sm"></select></div>
+        <div class="col-6"><select id="hstatus" class="form-select form-select-sm">
+          <option value="ACTIVE">Accepting patients</option><option value="DIVERSION">On diversion</option></select></div>
+        <div class="col-6"><input id="hbeds2" type="number" min="0" class="form-control form-control-sm" placeholder="Beds (optional)"></div>
+        <div class="col-12"><button class="btn btn-outline-dark btn-sm w-100" id="updHosp">Update hospital</button></div>
+        <div class="col-12" id="hupdMsg"></div></div></div></div></div>
+  </div>
+
+  <div class="row g-3 mt-1 mb-4">
+    <div class="col-lg-7">
+      <div class="card mb-3"><div class="card-body">
+        <div class="d-flex justify-content-between">
+          <h6>Dispatches</h6>
+          <a class="btn btn-sm btn-outline-secondary" href="/api/reports/dispatches.csv">Download report (CSV)</a>
+        </div>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+          <thead><tr><th>#</th><th>Ambulance</th><th>Type</th><th>Hospital</th><th>ETA</th><th>Status</th><th></th></tr></thead>
+          <tbody id="dispatches"></tbody></table></div>
+      </div></div>
+      <div class="row g-3">
+        <div class="col-md-6"><div class="card"><div class="card-body"><h6>Ambulances</h6>
+          <table class="table table-sm mb-0"><tbody id="ambulances"></tbody></table></div></div></div>
+        <div class="col-md-6"><div class="card"><div class="card-body"><h6>Hospitals</h6>
+          <table class="table table-sm mb-0"><tbody id="hospitals"></tbody></table></div></div></div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card mb-3"><div class="card-body">
+        <h6>Waiting queue <span class="badge text-bg-warning" id="queueCount">0</span></h6>
+        <div class="small text-muted mb-1">Most severe first. Served automatically when an ambulance is free.</div>
+        <ul class="list-unstyled small mb-0" id="queue"></ul>
+      </div></div>
+      <div class="card mb-3"><div class="card-body">
+        <h6>Live notifications</h6><ul class="list-unstyled small mb-0" id="notes" style="max-height:220px;overflow:auto"></ul>
+      </div></div>
+      <div class="card mb-3"><div class="card-body">
+        <h6>Ambulance pre-positioning</h6>
+        <div class="small text-muted" id="prepoSummary">Loading...</div>
+        <div class="table-responsive"><table class="table table-sm mb-1"><thead><tr><th>Standby junction</th><th>Ambulances</th><th>Calls</th></tr></thead>
+          <tbody id="standby"></tbody></table></div>
+        <div class="table-responsive"><table class="table table-sm mb-1"><thead><tr><th>Move</th><th>From</th><th>To</th><th>km</th></tr></thead>
+          <tbody id="moves"></tbody></table></div>
+        <a href="/hotspot-map" target="_blank" rel="noopener" class="small">Open full hotspot map</a>
+      </div></div>
+      <div class="card"><div class="card-body">
+        <h6>Historical emergency calls by hour</h6>
+        <canvas id="hourChart" height="220"></canvas>
+        <div id="chartMsg" class="small text-muted"></div>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+const _fetch = window.fetch;                                 // any 401 means the session ended: go to login
+window.fetch = async (...a) => { const r = await _fetch(...a); if (r.status === 401) location = '/login'; return r; };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const BADGE = {AVAILABLE: 'success', DISPATCHED: 'warning', AT_SCENE: 'danger', TO_HOSPITAL: 'primary',
+               REPORTED: 'secondary', ASSIGNED: 'warning', ARRIVED: 'danger', TRANSPORTED: 'primary', COMPLETED: 'success'};
+const badge = s => `<span class="badge text-bg-${BADGE[s] || 'secondary'}">${esc(s)}</span>`;
+
+// ---------- map ----------
+const map = L.map('map').setView([15.4786, 78.4836], 14);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'}).addTo(map);
+const roadLayer = L.layerGroup().addTo(map), unitLayer = L.layerGroup().addTo(map),
+      routeLayer = L.layerGroup().addTo(map), hotspotLayer = L.layerGroup();
+let pin = null, junctions = {};
+
+map.on('click', e => {
+  $('lat').value = e.latlng.lat.toFixed(5); $('lon').value = e.latlng.lng.toFixed(5);
+  if (pin) pin.setLatLng(e.latlng); else pin = L.marker(e.latlng).addTo(map);
+});
+
+// ---------- street routes and live driving ----------
+// The road graph decides WHICH junctions to pass; OSRM (public demo server) supplies the real street geometry.
+const pathCache = {}; let streetWarned = false;
+async function streetPath(points) {                       // points: [[lat, lon], ...]
+  const pts = points.filter((p, i) => i === 0 || p[0] !== points[i - 1][0] || p[1] !== points[i - 1][1]);
+  if (pts.length < 2) return pts;
+  const key = pts.join(';');
+  if (pathCache[key]) return pathCache[key];
+  try {
+    const url = 'https://router.project-osrm.org/route/v1/driving/' + pts.map(p => p[1] + ',' + p[0]).join(';') +
+                '?overview=full&geometries=geojson';
+    const j = await (await fetch(url)).json();
+    if (j.code === 'Ok') return pathCache[key] = j.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+  } catch (e) { /* fall through */ }
+  if (!streetWarned) { streetWarned = true; note('warning', 'Street routing is unavailable (check internet). Showing straight lines.'); }
+  return pts;
+}
+
+let world = {ambulances: [], hospitals: []}, routeGroups = {};
+const seen = {}, pending = {};                     // reroute detection per dispatch
+const moving = {}, driving = new Set(), sleep = ms => new Promise(r => setTimeout(r, ms));
+const toPts = ids => (ids || []).map(i => junctions[i]).filter(Boolean);
+
+function legPoints(d) {                                   // [ambulance -> scene, scene -> hospital]
+  const amb = world.ambulances.find(a => a.vehicle_number === d.vehicle_number);
+  const hosp = world.hospitals.find(h => h.name === d.hospital);
+  const inc = [d.incident_lat, d.incident_lon];
+  const start = amb && d.ambulance_status !== 'AVAILABLE' ? [[amb.latitude, amb.longitude]] : [];
+  const end = hosp ? [[hosp.latitude, hosp.longitude]] : [];
+  return [[...start, ...toPts(d.route.to_scene), inc], [inc, ...toPts(d.route.to_hospital), ...end]];
+}
+
+async function showRoute(id, clear = true) {              // blue: to the scene, red: to the hospital
+  const d = latest.find(x => x.dispatch_id === id); if (!d) return [[], []];
+  if (clear) { Object.values(routeGroups).forEach(g => routeLayer.removeLayer(g)); routeGroups = {}; }
+  if (routeGroups[id]) { routeLayer.removeLayer(routeGroups[id]); delete routeGroups[id]; }
+  const [a, b] = legPoints(d);
+  const [p1, p2] = await Promise.all([streetPath(a), streetPath(b)]);
+  const g = L.layerGroup().addTo(routeLayer);
+  L.polyline(p1, {color: '#0d6efd', weight: 6, opacity: 0.8}).addTo(g);
+  L.polyline(p2, {color: '#dc3545', weight: 6, opacity: 0.8}).addTo(g);
+  L.circleMarker([d.incident_lat, d.incident_lon], {radius: 8, color: '#000', fillColor: '#ffc107', fillOpacity: 1})
+    .bindPopup('Incident: ' + esc(d.emergency_type)).addTo(g);
+  routeGroups[id] = g;
+  return [p1, p2];
+}
+
+function animate(path, ms, marker, opts = {}) {         // glide a marker along a polyline: 'done' or 'rerouted'
+  return new Promise(resolve => {
+    if (path.length < 2) { if (path[0]) marker.setLatLng(path[0]); return setTimeout(() => resolve('done'), ms); }
+    const cum = [0]; for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + map.distance(path[i - 1], path[i]));
+    const total = cum[cum.length - 1] || 1, t0 = performance.now(); let lastReport = t0;
+    (function step(now) {
+      if (opts.stop && opts.stop()) return resolve('rerouted');
+      const f = Math.min((now - t0) / ms, 1), dist = f * total;
+      let i = 1; while (i < cum.length - 1 && cum[i] < dist) i++;
+      const a = path[i - 1], b = path[i], k = (dist - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1);
+      marker.setLatLng([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]);
+      if (opts.onProgress && now - lastReport > 1500) { lastReport = now; opts.onProgress(f); }
+      f < 1 ? requestAnimationFrame(step) : resolve('done');
+    })(t0);
+  });
+}
+
+// One leg of the trip. If the server changes the route on the way (closed road, new traffic, hospital diversion)
+// the ambulance carries on from where it is, along the new route.
+async function travel(id, leg, path, ms, bus) {
+  for (let guard = 0; guard < 10; guard++) {
+    const r = await animate(path, ms, bus, {
+      stop: () => pending[id],
+      onProgress: f => post(`/api/dispatches/${id}/progress`, {fraction: f}).catch(() => {})});
+    if (r === 'done') return;
+    pending[id] = false;
+    const nd = latest.find(x => x.dispatch_id === id); if (!nd) return;
+    seen[id] = nd.reroutes || 0;
+    await showRoute(id, false);
+    const h = world.hospitals.find(x => x.name === nd.hospital);
+    const end = leg === 'to_scene' || !h ? [nd.incident_lat, nd.incident_lon] : [h.latitude, h.longitude];
+    const here = bus.getLatLng();
+    path = await streetPath([[here.lat, here.lng], ...toPts(nd.route[leg]), end]);
+    ms = Math.max(3000, ((leg === 'to_scene' ? nd.route.eta_scene_min : nd.route.eta_hospital_min) || 1) * 60000 / parseFloat($('speed').value));
+    note('warning', `<b>${esc(nd.vehicle_number)}</b> was rerouted and continues on the new route.`);
+  }
+}
+
+async function drive(d, res) {                            // full live trip with automatic status changes
+  const id = d.dispatch_id, speed = parseFloat($('speed').value), name = esc(d.vehicle_number);
+  const ms = min => Math.max(3000, min * 60000 / speed), fresh = () => latest.find(x => x.dispatch_id === id) || d;
+  driving.add(id); moving[d.vehicle_number] = true; seen[id] = d.reroutes || 0; pending[id] = false;
+  let bus = null;
+  try {
+    const [p1] = await showRoute(id, false);
+    bus = L.marker(p1[0], {icon: L.divIcon({html: '&#128657;', className: '', iconSize: [28, 28]}), zIndexOffset: 1000}).addTo(map);
+    note('info', `${name} is heading to the scene...`);
+    await travel(id, 'to_scene', p1, ms(fresh().route.eta_scene_min ?? res.eta_to_scene_min), bus);
+    await post(`/api/dispatches/${id}/advance`); await refresh();
+    note('warning', `${name} has arrived. Loading the patient...`); await sleep(2000);
+    await post(`/api/dispatches/${id}/advance`); await refresh();
+    const [, p2] = await showRoute(id, false);            // hospital leg from the latest route
+    note('primary', `${name} is on the way to ${esc(fresh().hospital)}...`);
+    await travel(id, 'to_hospital', p2, ms(fresh().route.eta_hospital_min ?? res.eta_to_hospital_min), bus);
+    await post(`/api/dispatches/${id}/advance`);
+    note('success', `Patient delivered to ${esc(fresh().hospital)}. ${name} is available again.`);
+  } finally {
+    if (bus) map.removeLayer(bus);
+    driving.delete(id); delete moving[d.vehicle_number]; delete seen[id]; delete pending[id];
+    await refresh(); setTimeout(() => { if (routeGroups[id]) { routeLayer.removeLayer(routeGroups[id]); delete routeGroups[id]; } }, 5000);
+  }
+}
+
+// ---------- live refresh ----------
+let latest = [];
+async function refresh() {
+  const [s, sum] = await Promise.all([fetch('/api/state').then(r => r.json()), fetch('/api/summary').then(r => r.json())]);
+  junctions = s.junctions; latest = s.dispatches; world = {ambulances: s.ambulances, hospitals: s.hospitals};
+  latest.forEach(d => { if (driving.has(d.dispatch_id) && (d.reroutes || 0) > (seen[d.dispatch_id] ?? 0)) pending[d.dispatch_id] = true; });
+  $('queueCount').textContent = s.queue.length;
+  $('queue').innerHTML = s.queue.map(q => `<li class="border-bottom py-1">#${q.incident_id} ${esc(q.emergency_type)}
+      <span class="badge text-bg-danger">severity ${q.severity}</span></li>`).join('') || '<li class="text-muted">Nobody is waiting</li>';
+  if (document.activeElement !== $('autoTraffic')) $('autoTraffic').checked = s.settings.auto_traffic;
+  $('rushNow').textContent = s.settings.rush_hour_now ? 'rush hour now' : 'normal hours';
+
+  $('cards').innerHTML = [
+    ['Ambulances available', `${sum.ambulances_available} / ${sum.ambulances_total}`],
+    ['Active dispatches', sum.active], ['Completed', sum.completed],
+    ['Average ETA', sum.avg_eta_min == null ? '-' : sum.avg_eta_min + ' min'], ['Free beds', sum.beds_free]
+  ].map(c => `<div class="col"><div class="card"><div class="card-body py-2"><div class="stat">${c[1]}</div>
+              <div class="small text-muted">${c[0]}</div></div></div></div>`).join('');
+
+  roadLayer.clearLayers();
+  const colour = {LOW: '#198754', MEDIUM: '#fd7e14', HEAVY: '#dc3545'};
+  s.roads.forEach(r => {
+    const a = s.junctions[r.source], b = s.junctions[r.destination]; if (!a || !b) return;
+    const closed = r.road_condition === 'CLOSED';
+    L.polyline([a, b], {color: closed ? '#6c757d' : colour[r.effective_traffic || r.traffic_level], weight: 4,
+      dashArray: closed ? '6 8' : null}).bindPopup(`Road ${r.source}-${r.destination}: ${r.effective_traffic || r.traffic_level}${r.effective_traffic !== r.traffic_level ? ' (rush hour, set: ' + r.traffic_level + ')' : ''}, ${r.road_condition}`)
+      .addTo(roadLayer);
+  });
+  unitLayer.clearLayers();
+  s.ambulances.filter(a => !moving[a.vehicle_number]).forEach(a => L.circleMarker([a.latitude, a.longitude], {radius: 8, weight: 3, color: '#0d6efd',
+      fillColor: a.status === 'AVAILABLE' ? '#fff' : '#ffc107', fillOpacity: 1})
+      .bindPopup(`<b>${esc(a.vehicle_number)}</b><br>${esc(a.status)}`).addTo(unitLayer));
+  s.hospitals.forEach(h => L.marker([h.latitude, h.longitude])
+      .bindPopup(`<b>${esc(h.name)}</b><br>Beds: ${h.available_beds}<br>${esc(h.status)}`).addTo(unitLayer));
+
+  $('ambulances').innerHTML = s.ambulances.map(a => `<tr><td>${esc(a.vehicle_number)}</td><td>${badge(a.status)}</td></tr>`).join('');
+  $('hospitals').innerHTML = s.hospitals.map(h => `<tr><td>${esc(h.name)}</td><td>${h.available_beds} beds</td>
+    <td>${h.status === 'ACTIVE' ? '<span class="badge text-bg-success">Active</span>' : '<span class="badge text-bg-danger">Diversion</span>'}</td></tr>`).join('');
+  const hs = $('hsel').value;
+  $('hsel').innerHTML = s.hospitals.map(h => `<option value="${h.hospital_id}">${esc(h.name)}</option>`).join('');
+  if (hs) $('hsel').value = hs;
+  $('dispatches').innerHTML = s.dispatches.map(d => `<tr>
+      <td>${d.dispatch_id}</td><td>${esc(d.vehicle_number)}</td><td>${esc(d.emergency_type)}</td>
+      <td>${esc(d.hospital)}</td><td>${d.eta_min} min</td><td>${badge(d.incident_status)}</td>
+      <td>${d.ambulance_status === 'AVAILABLE' || driving.has(d.dispatch_id) ? '' :
+        `<button class="btn btn-sm btn-outline-primary" onclick="advance(${d.dispatch_id})">Next stage</button>`}
+          <button class="btn btn-sm btn-link" onclick="showRoute(${d.dispatch_id})">Route</button></td></tr>`).join('')
+    || '<tr><td colspan="7" class="text-muted">No dispatches yet</td></tr>';
+
+  const sel = $('road').value;
+  $('road').innerHTML = s.roads.map(r => `<option value="${r.source}-${r.destination}">Road ${r.source} - ${r.destination} (${r.traffic_level}, ${r.road_condition})</option>`).join('');
+  if (sel) $('road').value = sel;
+  $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
+
+const post = (url, body) => fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+  body: body ? JSON.stringify(body) : null}).then(async r => ({ok: r.ok, data: await r.json()}));
+const note = (cls, html) => $('msg').innerHTML = `<div class="alert alert-${cls} py-2 small mb-0">${html}</div>`;
+window.advance = async id => { await post(`/api/dispatches/${id}/advance`); refresh(); };
+
+$('dispatchBtn').onclick = async () => {
+  const lat = parseFloat($('lat').value), lon = parseFloat($('lon').value);
+  if (isNaN(lat) || isNaN(lon)) return note('warning', 'Click the map or enter latitude and longitude.');
+  const r = await post('/api/incidents/dispatch', {latitude: lat, longitude: lon,
+    emergency_type: $('etype').value, severity: parseInt($('sev').value)});
+  if (!r.ok) { refresh(); return note(r.data.queued ? 'warning' : 'danger', esc(r.data.error)); }
+  const d = r.data;
+  note('success', `<b>${esc(d.ambulance)}</b> dispatched (ETA ${d.eta_to_scene_min} min)<br>
+    Hospital: <b>${esc(d.hospital)}</b> (${d.eta_to_hospital_min} min from scene)` +
+    (d.specialty_match ? '' : '<br><i>No hospital with the needed specialty has beds.</i>'));
+  await refresh();
+  const row = latest.find(x => x.dispatch_id === d.dispatch_id);
+  if ($('auto').checked) drive(row, d); else showRoute(d.dispatch_id);
+};
+
+$('roadBtn').onclick = async () => {
+  const [source, destination] = $('road').value.split('-').map(Number);
+  const r = await post('/api/roads/traffic', {source, destination,
+    traffic_level: $('traffic').value, road_condition: $('cond').value});
+  note(r.ok ? 'info' : 'danger', r.ok ? 'Road updated. ' + rerouteText(r.data) : esc(r.data.error));
+  refresh();
+};
+
+// ---------- hotspots and chart ----------
+let hotspotsOn = false;
+const q = () => $('method').value === 'kmeans' ? '?method=kmeans&k=' + ($('kval').value || 3) : '?method=dbscan';
+async function drawHotspots() {
+  const r = await fetch('/api/hotspots' + q()); const d = await r.json();
+  if (!r.ok) { hotspotsOn = false; $('hotspotBtn').textContent = 'Show demand hotspots'; return note('warning', esc(d.error)); }
+  hotspotLayer.clearLayers();
+  d.hotspots.forEach(h => L.circle([h.latitude, h.longitude], {radius: 120 + h.calls * 1.5, color: '#d9534f', fillOpacity: 0.25})
+    .bindPopup(`<b>Hotspot ${h.hotspot_id}</b><br>${h.calls} calls (${h.share_pct}%)<br>${esc(h.top_type)}, peak ${h.peak_hour}:00`).addTo(hotspotLayer));
+  const p = await (await fetch('/api/prepositioning' + q())).json();
+  (p.standby_points || []).forEach(sp => L.circleMarker([sp.latitude, sp.longitude], {radius: 9, color: '#198754', fillColor: '#198754', fillOpacity: 0.9})
+    .bindPopup(`<b>Standby point</b> (junction ${sp.junction_id})<br>${sp.ambulances_recommended} ambulance(s) recommended`).addTo(hotspotLayer));
+  hotspotLayer.addTo(map); $('hotspotBtn').textContent = 'Hide demand hotspots';
+}
+$('hotspotBtn').onclick = async () => {
+  hotspotsOn = !hotspotsOn;
+  if (!hotspotsOn) { map.removeLayer(hotspotLayer); $('hotspotBtn').textContent = 'Show demand hotspots'; return; }
+  await drawHotspots();
+};
+$('method').onchange = () => { $('kval').classList.toggle('d-none', $('method').value !== 'kmeans'); loadPrepo(); if (hotspotsOn) drawHotspots(); };
+$('kval').onchange = () => { loadPrepo(); if (hotspotsOn) drawHotspots(); };
+
+// ---------- pre-positioning panel ----------
+async function loadPrepo() {
+  const r = await fetch('/api/prepositioning' + q()); const p = await r.json();
+  if (!r.ok) { $('prepoSummary').textContent = p.error; return; }
+  $('prepoSummary').innerHTML = p.improvement_pct == null ? 'No free ambulances to reposition.' :
+    `Average distance to the nearest ambulance: <b>${p.avg_distance_km_before} km</b> now, <b>${p.avg_distance_km_after} km</b> if repositioned (<b>${p.improvement_pct}% better</b>).`;
+  $('standby').innerHTML = p.standby_points.map(x => `<tr><td>Junction ${x.junction_id}</td><td>${x.ambulances_recommended}</td><td>${x.calls}</td></tr>`).join('');
+  $('moves').innerHTML = p.moves.map(m => `<tr><td>${esc(m.vehicle_number)}</td><td>${m.from_junction}</td><td>${m.to_junction}</td>
+    <td>${m.already_in_place ? 'in place' : m.distance_km}</td></tr>`).join('') || '<tr><td colspan="4" class="text-muted">None</td></tr>';
+}
+
+fetch('/api/hotspots').then(r => r.json()).then(d => {
+  if (!d.calls_by_hour) { $('chartMsg').textContent = 'No historical data. Run python load_calls.py'; return; }
+  new Chart($('hourChart'), {type: 'bar',
+    data: {labels: [...Array(24).keys()].map(h => h + ':00'),
+           datasets: [{label: 'Calls', data: d.calls_by_hour, backgroundColor: '#dc3545'}]},
+    options: {plugins: {legend: {display: false}}, scales: {x: {ticks: {maxRotation: 90, font: {size: 9}}}}}});
+});
+
+// ---------- who am I (shows the controls this role may use) ----------
+fetch('/api/me').then(r => r.json()).then(me => {
+  $('who').textContent = me.username + ' (' + me.role + ')';
+  document.querySelectorAll('[data-roles]').forEach(el =>
+    el.classList.toggle('d-none', !el.dataset.roles.split(',').includes(me.role)));
+});
+
+// ---------- notifications ----------
+async function loadNotes() {
+  const n = await (await fetch('/api/notifications')).json();
+  $('notes').innerHTML = n.map(x => `<li class="border-bottom py-1"><span class="text-muted">${esc(x.created_at)}</span><br>${esc(x.message)}</li>`).join('')
+    || '<li class="text-muted">No notifications yet</li>';
+}
+
+// ---------- administrator forms ----------
+const rerouteText = d => {
+  const n = (d.rerouted || []).length, q = (d.dispatched_from_queue || []).length;
+  return (n ? `<b>${n} ambulance(s) rerouted:</b> ` + d.rerouted.map(x => esc(x.vehicle_number) + ' (' + esc(x.reason) + ')').join(', ') + '. ' : 'No active trip needed a new route. ')
+       + (q ? q + ' waiting incident(s) dispatched.' : '');
+};
+const flash = (id, ok, text) => $(id).innerHTML = `<div class="alert alert-${ok ? 'success' : 'danger'} py-1 small mb-0">${esc(text)}</div>`;
+const mapPoint = (la, lo) => e => { e.preventDefault(); if (!$('lat').value) return; $(la).value = $('lat').value; $(lo).value = $('lon').value; };
+$('useA').onclick = mapPoint('alat', 'alon'); $('useH').onclick = mapPoint('hlat', 'hlon');
+
+$('addAmb').onclick = async () => {
+  const r = await post('/api/ambulances', {vehicle_number: $('avn').value, latitude: $('alat').value, longitude: $('alon').value});
+  flash('ambMsg', r.ok, r.ok ? r.data.vehicle_number + ' registered' : r.data.error);
+  if (r.ok) { $('avn').value = ''; refresh(); loadPrepo(); loadNotes(); }
+};
+$('addHosp').onclick = async () => {
+  const r = await post('/api/hospitals', {name: $('hname').value, latitude: $('hlat').value, longitude: $('hlon').value,
+    available_beds: $('hbeds').value, specialties: $('hspec').value});
+  flash('hospMsg', r.ok, r.ok ? r.data.name + ' registered' : r.data.error);
+  if (r.ok) { $('hname').value = ''; refresh(); loadNotes(); }
+};
+$('updHosp').onclick = async () => {
+  const body = {status: $('hstatus').value}; if ($('hbeds2').value !== '') body.available_beds = $('hbeds2').value;
+  const r = await post('/api/hospitals/' + $('hsel').value, body);
+  flash('hupdMsg', r.ok, r.ok ? 'Hospital updated' : r.data.error);
+  if (r.ok) { refresh(); loadNotes(); }
+};
+
+$('autoTraffic').onchange = async () => {
+  const r = await post('/api/settings/auto-traffic', {enabled: $('autoTraffic').checked});
+  note(r.ok ? 'info' : 'danger', r.ok ? 'Automatic rush-hour traffic ' + (r.data.auto_traffic ? 'ON. ' : 'OFF. ') + rerouteText(r.data) : esc(r.data.error));
+  refresh(); loadNotes();
+};
+$('recheckBtn').onclick = async () => {
+  const r = await post('/api/dispatches/recheck');
+  note(r.ok ? 'info' : 'danger', r.ok ? rerouteText(r.data) : esc(r.data.error)); refresh(); loadNotes();
+};
+
+refresh(); loadNotes(); loadPrepo();
+setInterval(refresh, 5000); setInterval(loadNotes, 5000); setInterval(loadPrepo, 30000);
+</script>
+</body>
+</html>

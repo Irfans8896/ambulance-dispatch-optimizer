@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Driver - Ambulance Dispatch</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>body { background: #f4f6f8; } .big { font-size: 1.2rem; padding: 1rem; }</style>
+</head>
+<body>
+<nav class="navbar navbar-dark bg-danger mb-3">
+  <div class="container"><span class="navbar-brand mb-0 h1">&#128657; Driver</span>
+    <span class="text-white small">{{ user.username }} &middot; <a class="text-white" href="/logout">Logout</a></span></div>
+</nav>
+<div class="container" style="max-width: 560px;">
+  <div class="card mb-3"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-center">
+      <h5 class="mb-0" id="vehicle">...</h5><span id="status" class="badge text-bg-secondary">...</span></div>
+    <div class="text-muted small" id="updated"></div>
+  </div></div>
+
+  <div id="trip" class="card mb-3 d-none"><div class="card-body">
+    <h6>Current assignment</h6>
+    <div id="tripInfo" class="mb-3"></div>
+    <a id="navBtn" class="btn btn-outline-primary w-100 mb-2" target="_blank" rel="noopener">Open navigation</a>
+    <button id="nextBtn" class="btn btn-success w-100 big"></button>
+    <div id="msg" class="mt-2"></div>
+  </div></div>
+  <div id="idle" class="alert alert-success d-none">You are available. Waiting for the next dispatch.</div>
+
+  <div class="card mb-4"><div class="card-body">
+    <h6>Notifications</h6><ul class="list-unstyled small mb-0" id="notes"></ul>
+  </div></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const BADGE = {AVAILABLE: 'success', DISPATCHED: 'warning', AT_SCENE: 'danger', TO_HOSPITAL: 'primary'};
+let tripId = null;
+
+async function load() {
+  const r = await fetch('/api/driver/status');
+  if (r.status === 401) return location = '/login';
+  const s = await r.json();
+  if (!r.ok) { $('vehicle').textContent = s.error; return; }
+  $('vehicle').textContent = s.ambulance.vehicle_number;
+  $('status').className = 'badge text-bg-' + (BADGE[s.ambulance.status] || 'secondary');
+  $('status').textContent = s.ambulance.status;
+  const t = s.trip;
+  $('trip').classList.toggle('d-none', !t); $('idle').classList.toggle('d-none', !!t);
+  if (t) {
+    tripId = t.dispatch_id;
+    $('tripInfo').innerHTML = `<b>${esc(t.emergency_type)}</b> (severity ${t.severity}) &middot; ETA ${t.eta_min} min<br>
+      Hospital: <b>${esc(t.hospital)}</b><br>Go to: <b>${t.go_to}</b>`;
+    $('navBtn').href = `https://www.google.com/maps/dir/?api=1&destination=${t.go_to_lat},${t.go_to_lon}`;
+    $('nextBtn').textContent = s.next_step;
+  }
+  $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  const n = await (await fetch('/api/notifications')).json();
+  $('notes').innerHTML = n.map(x => `<li class="border-bottom py-1"><span class="text-muted">${esc(x.created_at)}</span><br>${esc(x.message)}</li>`).join('')
+    || '<li class="text-muted">No notifications</li>';
+}
+$('nextBtn').onclick = async () => {
+  const r = await fetch(`/api/dispatches/${tripId}/advance`, {method: 'POST'});
+  const d = await r.json();
+  $('msg').innerHTML = r.ok ? '' : `<div class="alert alert-danger py-2 small">${esc(d.error)}</div>`;
+  load();
+};
+load(); setInterval(load, 5000);
+</script>
+</body>
+</html>
