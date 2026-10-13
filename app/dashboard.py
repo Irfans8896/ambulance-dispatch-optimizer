@@ -21,6 +21,15 @@ def index():
     return render_template("dashboard.html")
 
 
+@bp.route("/driver")
+def driver_view():
+    user = current_user()
+    if not user:
+        from flask import redirect, url_for
+        return redirect(url_for("auth.login", next="/driver"))
+    return render_template("driver.html", user=user)
+
+
 @bp.route("/api/state")
 def state():
     """Everything the live dashboard needs, in one request."""

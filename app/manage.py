@@ -142,12 +142,25 @@ def traffic_history():
 @bp.route("/api/driver/status")
 def driver_status():
     user = current_user()
-    if not user or user["role"] != "driver" or not user.get("ambulance_id"):
-        return jsonify({"error": "Drivers only"}), 400
+    if not user:
+        return jsonify({"error": "Login required"}), 401
     db = get_db()
-    amb = db.execute("SELECT * FROM ambulances WHERE ambulance_id=?", (user["ambulance_id"],)).fetchone()
+
+    if user["role"] == "driver" and user.get("ambulance_id"):
+        amb_id = user["ambulance_id"]
+    elif user["role"] in ("admin", "dispatcher") and request.args.get("preview") == "1":
+        req_amb = request.args.get("ambulance_id", type=int)
+        if req_amb:
+            amb_id = req_amb
+        else:
+            active = db.execute("SELECT ambulance_id FROM ambulances WHERE status != 'AVAILABLE' ORDER BY ambulance_id ASC LIMIT 1").fetchone()
+            amb_id = active["ambulance_id"] if active else 1
+    else:
+        return jsonify({"error": "Drivers only"}), 400
+
+    amb = db.execute("SELECT * FROM ambulances WHERE ambulance_id=?", (amb_id,)).fetchone()
     trip = None
-    if amb["status"] != "AVAILABLE":
+    if amb and amb["status"] != "AVAILABLE":
         d = db.execute(
             """SELECT d.dispatch_id, d.response_time AS eta_min, i.emergency_type, i.severity,
                       i.status AS incident_status, i.latitude AS scene_lat, i.longitude AS scene_lon,
@@ -155,15 +168,15 @@ def driver_status():
                       h.available_beds, h.specialties
                FROM dispatches d JOIN incidents i ON i.incident_id=d.incident_id
                JOIN hospitals h ON h.hospital_id=d.hospital_id
-               WHERE d.ambulance_id=? ORDER BY d.dispatch_id DESC LIMIT 1""", (amb["ambulance_id"],)).fetchone()
+               WHERE d.ambulance_id=? ORDER BY d.dispatch_id DESC LIMIT 1""", (amb_id,)).fetchone()
         if d:
             trip = dict(d)
             to_scene = amb["status"] == "DISPATCHED"
             trip["go_to"] = "scene" if to_scene else "hospital"
             trip["go_to_lat"] = trip["scene_lat"] if to_scene else trip["hospital_lat"]
             trip["go_to_lon"] = trip["scene_lon"] if to_scene else trip["hospital_lon"]
-    return jsonify({"username": user["username"], "ambulance": dict(amb), "trip": trip,
-                    "next_step": NEXT_STEP.get(amb["status"])})
+    return jsonify({"username": user["username"], "ambulance": dict(amb) if amb else {}, "trip": trip,
+                    "next_step": NEXT_STEP.get(amb["status"]) if amb else None})
 
 
 @bp.route("/api/dispatches/<int:dispatch_id>/severity", methods=["POST"])
