@@ -68,6 +68,65 @@ def change_hospital(hospital_id):
     return jsonify({"message": "Hospital updated", "status": status, "available_beds": beds, **after_change(db)})
 
 
+@bp.route("/api/hospitals/<int:hospital_id>/add-beds", methods=["POST"])
+def add_beds(hospital_id):
+    from .services.ops import notify
+    db = get_db()
+    delta = int((_json_or_400()).get("delta", 5))
+    row = db.execute("SELECT * FROM hospitals WHERE hospital_id=?", (hospital_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "Hospital not found"}), 404
+    new_beds = max(0, row["available_beds"] + delta)
+    db.execute("UPDATE hospitals SET available_beds=? WHERE hospital_id=?", (new_beds, hospital_id))
+    db.commit()
+    notify(db, f"Hospital Capacity Scaled: {row['name']} received +{delta} beds (now {new_beds} available)")
+    return jsonify({"hospital_id": hospital_id, "name": row["name"], "available_beds": new_beds, **after_change(db)})
+
+
+@bp.route("/api/hospitals/surge", methods=["POST"])
+def hospital_surge():
+    from .services.ops import notify
+    db = get_db()
+    delta = int((_json_or_400()).get("delta", 10))
+    db.execute("UPDATE hospitals SET available_beds = available_beds + ? WHERE status='ACTIVE'", (delta,))
+    db.commit()
+    notify(db, f"Emergency Surge Capacity Activated: +{delta} ICU beds allocated across all active facilities")
+    return jsonify({"message": f"Added {delta} beds to all active hospitals", **after_change(db)})
+
+
+@bp.route("/api/ambulances/surge", methods=["POST"])
+def ambulance_surge():
+    from .services.ops import notify
+    db = get_db()
+    count = int((_json_or_400()).get("count", 2))
+    
+    # Get highest vehicle number or junctions to station them
+    junction_rows = db.execute("SELECT junction_id, latitude, longitude FROM junctions ORDER BY junction_id").fetchall()
+    if not junction_rows:
+        return jsonify({"error": "No junctions found"}), 400
+        
+    existing = [r[0] for r in db.execute("SELECT vehicle_number FROM ambulances").fetchall()]
+    added = []
+    
+    for i in range(1, count + 1):
+        # Pick sequential vehicle numbers
+        num = 1001
+        while f"AP21-{num}" in existing or f"AP21-R{i}" in existing:
+            num += 1
+        v_num = f"AP21-{num}"
+        existing.append(v_num)
+        
+        # Station at distributed junctions
+        target_j = junction_rows[(len(existing) - 1) % len(junction_rows)]
+        db.execute("INSERT INTO ambulances (vehicle_number, latitude, longitude, status) VALUES (?,?,?, 'AVAILABLE')",
+                   (v_num, target_j["latitude"], target_j["longitude"]))
+        added.append(v_num)
+        
+    db.commit()
+    notify(db, f"Fleet Capacity Scaled: {len(added)} Reserve Ambulances deployed ({', '.join(added)})")
+    return jsonify({"message": f"Deployed {len(added)} ambulances", "ambulances": added, **after_change(db, reroute=False)})
+
+
 @bp.route("/api/notifications")
 def notifications():
     user = current_user() or {}
@@ -92,7 +151,8 @@ def driver_status():
         d = db.execute(
             """SELECT d.dispatch_id, d.response_time AS eta_min, i.emergency_type, i.severity,
                       i.status AS incident_status, i.latitude AS scene_lat, i.longitude AS scene_lon,
-                      h.name AS hospital, h.latitude AS hospital_lat, h.longitude AS hospital_lon
+                      h.hospital_id, h.name AS hospital, h.latitude AS hospital_lat, h.longitude AS hospital_lon,
+                      h.available_beds, h.specialties
                FROM dispatches d JOIN incidents i ON i.incident_id=d.incident_id
                JOIN hospitals h ON h.hospital_id=d.hospital_id
                WHERE d.ambulance_id=? ORDER BY d.dispatch_id DESC LIMIT 1""", (amb["ambulance_id"],)).fetchone()
@@ -104,6 +164,61 @@ def driver_status():
             trip["go_to_lon"] = trip["scene_lon"] if to_scene else trip["hospital_lon"]
     return jsonify({"username": user["username"], "ambulance": dict(amb), "trip": trip,
                     "next_step": NEXT_STEP.get(amb["status"])})
+
+
+@bp.route("/api/dispatches/<int:dispatch_id>/severity", methods=["POST"])
+def set_severity(dispatch_id):
+    """Driver or dispatcher updates the emergency triage severity level (1-5)."""
+    from .services.dispatch import update_dispatch_severity
+    from .services.ops import notify
+    data = _json_or_400()
+    try:
+        severity = data.get("severity")
+        if severity is None:
+            return jsonify({"error": "severity is required"}), 400
+        db = get_db()
+        out = update_dispatch_severity(db, dispatch_id, severity)
+        notify(db, "%s: Triage severity updated to Level %d" % (out["vehicle_number"], out["new_severity"]),
+               "ambulance:%s" % out["ambulance_id"])
+        notify(db, "Ambulance %s: Patient triage severity updated to Level %d" % (
+            out["vehicle_number"], out["new_severity"]))
+        return jsonify({"ok": True, **out})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@bp.route("/api/dispatches/<int:dispatch_id>/hospital-options")
+def hospital_options(dispatch_id):
+    """Get candidate hospitals for this trip with travel ETA and capability tier matching."""
+    from .services.dispatch import get_hospital_options_for_dispatch
+    try:
+        db = get_db()
+        options = get_hospital_options_for_dispatch(db, dispatch_id)
+        return jsonify(options)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+@bp.route("/api/dispatches/<int:dispatch_id>/hospital", methods=["POST"])
+def select_or_change_hospital(dispatch_id):
+    """Driver or dispatcher selects or changes the destination hospital."""
+    from .services.dispatch import update_dispatch_hospital
+    from .services.ops import notify
+    data = _json_or_400()
+    try:
+        hospital_id = data.get("hospital_id")
+        if hospital_id is None:
+            return jsonify({"error": "hospital_id is required"}), 400
+        db = get_db()
+        out = update_dispatch_hospital(db, dispatch_id, int(hospital_id))
+        notify(db, "%s: Destination hospital changed to %s (ETA %s min)" % (
+            out["vehicle_number"], out["new_hospital"], out["eta_hospital_min"]),
+            "ambulance:%s" % out["ambulance_id"])
+        notify(db, "Ambulance %s rerouted destination from %s to %s (ETA %s min)" % (
+            out["vehicle_number"], out["old_hospital"], out["new_hospital"], out["eta_hospital_min"]))
+        return jsonify({"ok": True, **out})
+    except (ValueError, TypeError) as e:
+        return jsonify({"error": str(e)}), 400
 
 
 # ------------------------------------------------------------------ re-routing, queue, settings, analytics

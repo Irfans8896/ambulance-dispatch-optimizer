@@ -36,8 +36,14 @@ conn.executemany(
 conn.executemany(
     "INSERT INTO hospitals (name, latitude, longitude, available_beds, specialties) VALUES (?,?,?,?,?)",
     [
-        ("City General", 14.6750, 77.5950, 12, "trauma,cardiac"),
-        ("District Hospital", 14.7000, 77.6200, 5, "general,pediatric"),
+        ("City General", 15.4686, 78.4736, 16, "trauma,cardiac,icu"),
+        ("District Hospital", 15.4936, 78.4986, 12, "general,pediatric,trauma"),
+        ("Apollo Emergency Care", 15.4836, 78.4886, 14, "cardiac,trauma,icu"),
+        ("Community Health Center", 15.4636, 78.4686, 6, "general,minor"),
+        ("Children & Maternity Clinic", 15.4755, 78.4792, 8, "pediatric,general"),
+        ("LifeLine Critical Care", 15.4886, 78.4936, 10, "cardiac,icu,trauma"),
+        ("Sanjeevani Trauma Care", 15.4710, 78.4760, 9, "trauma,general"),
+        ("Mother & Child Center", 15.4900, 78.4960, 7, "pediatric,minor"),
     ],
 )
 conn.commit()

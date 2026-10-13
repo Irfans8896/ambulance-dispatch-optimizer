@@ -68,11 +68,13 @@ def test_passed_junction_is_found_from_progress():
 def test_hospital_diversion_sends_trips_to_another_hospital():
     c = make_app().test_client()
     d = c.post("/api/incidents/dispatch", json={**SCENE, "emergency_type": "cardiac"}).get_json()
-    assert d["hospital"] == "City General"
-    hid = [h for h in c.get("/api/hospitals").get_json() if h["name"] == "City General"][0]["hospital_id"]
+    # LifeLine Critical Care is nearest Tier-1 cardiac from J5
+    assert d["hospital"] == "LifeLine Critical Care"
+    hid = [h for h in c.get("/api/hospitals").get_json() if h["name"] == "LifeLine Critical Care"][0]["hospital_id"]
     out = c.post("/api/hospitals/%d" % hid, json={"status": "DIVERSION"}).get_json()
-    assert out["rerouted"] and out["rerouted"][0]["new_hospital"] == "District Hospital"
-    assert trip(c)["hospital"] == "District Hospital"
+    # Trip reroutes to Apollo Emergency Care (next nearest cardiac Tier-1)
+    assert out["rerouted"] and out["rerouted"][0]["new_hospital"] == "Apollo Emergency Care"
+    assert trip(c)["hospital"] == "Apollo Emergency Care"
 
 
 def test_trip_already_at_the_hospital_leg_is_rerouted_too():
@@ -80,11 +82,14 @@ def test_trip_already_at_the_hospital_leg_is_rerouted_too():
     d = c.post("/api/incidents/dispatch", json=SCENE).get_json()
     for _ in range(2):
         c.post("/api/dispatches/%d/advance" % d["dispatch_id"])          # now TO_HOSPITAL
-    assert d["route_to_hospital"] == [5, 4, 3, 2]
-    road(c, 3, 4, road_condition="CLOSED")
+    # LifeLine at J5 → scene at J5: route_to_hospital is [5] (same junction)
+    assert d["route_to_hospital"] == [5]
+    # Divert LifeLine so the trip has to reroute to District Hospital (J6, cost 1.0 from J5)
+    hid = [h for h in c.get("/api/hospitals").get_json() if h["name"] == "LifeLine Critical Care"][0]["hospital_id"]
+    c.post("/api/hospitals/%d" % hid, json={"status": "DIVERSION"})
     new = trip(c)["route"]["to_hospital"]
-    assert new[0] == 5 and new[-1] == 2 and {3, 4} != set(new[1:-1]) and (3, 4) not in zip(new, new[1:]) \
-        and (4, 3) not in zip(new, new[1:])                                   # avoids the closed road 3-4
+    # New route should lead to District Hospital at J6 (not J5 anymore)
+    assert new[-1] == 6 and new[0] == 5
     assert trip(c)["reroutes"] == 1
 
 

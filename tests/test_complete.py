@@ -131,14 +131,18 @@ def test_register_hospital_validation():
 
 def test_hospital_diversion_is_respected_and_reversible():
     c = make_app().test_client()
-    hid = [h for h in c.get("/api/hospitals").get_json() if h["name"] == "City General"][0]["hospital_id"]
-    assert c.post("/api/hospitals/%d" % hid, json={"status": "DIVERSION"}).status_code == 200
+    hospitals = c.get("/api/hospitals").get_json()
+    lifeline_id = [h for h in hospitals if h["name"] == "LifeLine Critical Care"][0]["hospital_id"]
+    # Divert LifeLine (nearest Tier-1 at J5) — next nearest Tier-1 is District Hospital at J6 (cost=1.0)
+    assert c.post("/api/hospitals/%d" % lifeline_id, json={"status": "DIVERSION"}).status_code == 200
     d = c.post("/api/incidents/dispatch", json=SCENE).get_json()
-    assert d["hospital"] == "District Hospital" and d["specialty_match"] is False
-    assert c.post("/api/hospitals/%d" % hid, json={"status": "ACTIVE", "available_beds": 30}).status_code == 200
-    assert c.post("/api/incidents/dispatch", json=SCENE).get_json()["hospital"] == "City General"
-    assert c.post("/api/hospitals/%d" % hid, json={"status": "CLOSED"}).status_code == 400
-    assert c.post("/api/hospitals/%d" % hid, json={}).status_code == 400
+    # District Hospital has trauma specialty (Tier-1) and is at J6 (cost 1.0 from J5)
+    assert d["hospital"] == "District Hospital" and d["specialty_match"] is True
+    # Re-activate LifeLine with more beds — next dispatch should go back to LifeLine (nearest)
+    assert c.post("/api/hospitals/%d" % lifeline_id, json={"status": "ACTIVE", "available_beds": 30}).status_code == 200
+    assert c.post("/api/incidents/dispatch", json=SCENE).get_json()["hospital"] == "LifeLine Critical Care"
+    assert c.post("/api/hospitals/%d" % lifeline_id, json={"status": "CLOSED"}).status_code == 400
+    assert c.post("/api/hospitals/%d" % lifeline_id, json={}).status_code == 400
     assert c.post("/api/hospitals/999", json={"status": "ACTIVE"}).status_code == 404
 
 
@@ -194,3 +198,63 @@ def test_dashboard_has_every_feature_from_the_brief():
                    'id="addHosp"', 'id="updHosp"', 'id="roadBtn"', 'id="dispatchBtn"', 'id="hourChart"',
                    "/api/reports/dispatches.csv", "Next stage", "/logout"]:
         assert needle in page, needle
+
+
+def test_driver_can_set_trip_severity():
+    app = make_app(auth=True)
+    d = login(app, "dispatcher").post("/api/incidents/dispatch", json=SCENE).get_json()
+    assert d["ambulance"] == "AP21-1002"                              # ambulance 2 -> driver2
+    sev_url = "/api/dispatches/%d/severity" % d["dispatch_id"]
+
+    # Driver 1 cannot update driver 2's trip severity
+    assert login(app, "driver1").post(sev_url, json={"severity": 5}).status_code == 403
+
+    # Driver 2 can update patient severity
+    r = login(app, "driver2").post(sev_url, json={"severity": 5})
+    assert r.status_code == 200
+    res = r.get_json()
+    assert res["ok"] is True and res["new_severity"] == 5
+
+    # Check updated in DB
+    row = rows(app, "SELECT severity FROM incidents WHERE incident_id=?", d["incident_id"])[0]
+    assert row[0] == 5
+
+    # Invalid severity values rejected
+    assert login(app, "driver2").post(sev_url, json={"severity": 9}).status_code == 400
+    assert login(app, "driver2").post(sev_url, json={"severity": "abc"}).status_code == 400
+
+
+def test_driver_can_get_hospital_options_and_change_hospital():
+    app = make_app(auth=True)
+    d = login(app, "dispatcher").post("/api/incidents/dispatch", json=SCENE).get_json()
+    did = d["dispatch_id"]
+    opts_url = "/api/dispatches/%d/hospital-options" % did
+    change_url = "/api/dispatches/%d/hospital" % did
+
+    # Driver 1 cannot access or alter driver 2's trip
+    assert login(app, "driver1").get(opts_url).status_code == 403
+    assert login(app, "driver1").post(change_url, json={"hospital_id": 1}).status_code == 403
+
+    # Driver 2 retrieves options
+    r_opts = login(app, "driver2").get(opts_url)
+    assert r_opts.status_code == 200
+    options = r_opts.get_json()
+    assert len(options) >= 4
+    assert any(h["name"] == "District Hospital" for h in options)
+    assert any(h["name"] == "Apollo Emergency Care" for h in options)
+
+    # Find District Hospital
+    dist_hosp = next(h for h in options if h["name"] == "District Hospital")
+    r_change = login(app, "driver2").post(change_url, json={"hospital_id": dist_hosp["hospital_id"]})
+    assert r_change.status_code == 200
+    chg = r_change.get_json()
+    assert chg["ok"] is True
+    assert chg["new_hospital"] == "District Hospital"
+    assert "eta_hospital_min" in chg
+
+    # Verify hospital changed in database
+    row = rows(app, "SELECT hospital_id FROM dispatches WHERE dispatch_id=?", did)[0]
+    assert row[0] == dist_hosp["hospital_id"]
+
+    # Changing to invalid hospital rejected
+    assert login(app, "driver2").post(change_url, json={"hospital_id": 9999}).status_code == 400

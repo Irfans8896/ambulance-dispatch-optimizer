@@ -15,6 +15,9 @@ RULES = [
     ("POST", r"/api/incidents/dispatch", {ADMIN, DISPATCHER}),
     ("POST", r"/api/dispatches/\d+/advance", {ADMIN, DISPATCHER, DRIVER}),
     ("POST", r"/api/dispatches/\d+/progress", {ADMIN, DISPATCHER, DRIVER}),
+    ("POST", r"/api/dispatches/\d+/severity", {ADMIN, DISPATCHER, DRIVER}),
+    ("POST", r"/api/dispatches/\d+/hospital", {ADMIN, DISPATCHER, DRIVER}),
+    ("GET", r"/api/dispatches/\d+/hospital-options", {ADMIN, DISPATCHER, DRIVER}),
     ("POST", r"/api/dispatches/recheck", {ADMIN, DISPATCHER}),
     ("POST", r"/api/settings/auto-traffic", {ADMIN}),
     ("POST", r"/api/demo/simulate", {ADMIN}),
@@ -57,8 +60,8 @@ def guard():
             if user["role"] not in roles:
                 return jsonify({"error": "Your role (%s) is not allowed to do this" % user["role"]}), 403
             break
-    m = re.fullmatch(r"/api/dispatches/(\d+)/(?:advance|progress)", path)
-    if m and request.method == "POST" and user["role"] == DRIVER:      # drivers only move their own trip
+    m = re.fullmatch(r"/api/dispatches/(\d+)/(?:advance|progress|severity|hospital|hospital-options)", path)
+    if m and user["role"] == DRIVER:      # drivers only move and manage their own trip
         row = get_db().execute("SELECT ambulance_id FROM dispatches WHERE dispatch_id=?", (int(m.group(1)),)).fetchone()
         if row is None or row["ambulance_id"] != user["ambulance_id"]:
             return jsonify({"error": "This dispatch is not assigned to your ambulance"}), 403

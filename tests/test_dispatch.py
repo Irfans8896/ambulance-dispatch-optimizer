@@ -104,3 +104,32 @@ def test_invalid_input_is_rejected():
     with pytest.raises(ValueError):
         dispatch_incident(conn, *INCIDENT, "accident", 9)      # severity out of range
     assert conn.execute("SELECT COUNT(*) FROM incidents").fetchone()[0] == 0
+
+
+def test_severity_and_shortest_location_hospital_selection():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(open(os.path.join(BASE, "schema.sql")).read())
+    conn.executemany(
+        "INSERT INTO ambulances (vehicle_number, latitude, longitude) VALUES (?,?,?)",
+        [("AP21-1001", 15.4755, 78.4792), ("AP21-1002", 15.4836, 78.4886)])
+    conn.executemany(
+        "INSERT INTO hospitals (name, latitude, longitude, available_beds, specialties) VALUES (?,?,?,?,?)",
+        [
+            ("City General", 15.4686, 78.4736, 12, "trauma,cardiac"),
+            ("Apollo Emergency", 15.4836, 78.4886, 10, "trauma,cardiac"),
+            ("District Hospital", 15.4936, 78.4986, 5, "general,pediatric"),
+            ("Community Health Center", 15.4636, 78.4686, 6, "general,minor"),
+        ]
+    )
+    seed_roads.seed(conn)
+
+    # Severe accident (Severity 5) near Junction 5:
+    # Both City General (Junction 2) and Apollo Emergency (Junction 4) have trauma capabilities.
+    # Apollo Emergency (J4) is closer to J5 (2.0km) than City General (J2, 6.0km), so it is selected.
+    r_severe = dispatch_incident(conn, *INCIDENT, "accident", 5)
+    assert r_severe["hospital"] == "Apollo Emergency"
+
+    # Pediatric incident: District Hospital at Junction 6 (1.0km from J5) is selected.
+    r_child = dispatch_incident(conn, *INCIDENT, "child", 3)
+    assert r_child["hospital"] == "District Hospital"
