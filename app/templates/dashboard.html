@@ -264,6 +264,54 @@
     right: 20px;
     z-index: 9999;
   }
+
+  /* Driver Mobile HUD Styles */
+  .hud-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 14px;
+    padding: 1.25rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+  .btn-action-main {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1.15rem;
+    padding: 1rem;
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+    transition: all 0.2s;
+  }
+  .btn-action-main:hover {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    transform: translateY(-1px);
+    color: #ffffff;
+  }
+  .btn-nav-gps {
+    background: #2563eb;
+    color: #ffffff;
+    font-weight: 600;
+    border-radius: 10px;
+    padding: 0.75rem;
+    border: none;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+  .btn-nav-gps:hover {
+    background: #1d4ed8;
+    color: #ffffff;
+  }
+  .vitals-box {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 0.6rem 0.8rem;
+  }
 </style>
 </head>
 <body>
@@ -286,10 +334,19 @@
       </div>
     </div>
 
-    <div class="d-flex align-items-center gap-3">
-      <a class="btn btn-sm btn-success d-flex align-items-center gap-1 font-mono fw-bold text-white shadow-sm" href="/driver?preview=1" target="_blank" title="Open Driver Mobile HUD in a separate tab">
-        <i class="bi bi-phone-fill"></i> Driver HUD (2nd Tab)
-      </a>
+    <div class="d-flex align-items-center gap-2">
+      <!-- In-Page Per-Tab View Switcher (Both Admin & Driver at http://127.0.0.1:5001/) -->
+      <div class="btn-group btn-group-sm p-1 rounded bg-black bg-opacity-40 border border-secondary" role="group" aria-label="View Switcher">
+        <button type="button" id="viewBtnAdmin" class="btn btn-sm btn-primary fw-bold font-mono px-3" onclick="switchViewMode('admin')">
+          <i class="bi bi-display me-1"></i> Admin View
+        </button>
+        <button type="button" id="viewBtnDriver" class="btn btn-sm btn-outline-light fw-bold font-mono px-3" onclick="switchViewMode('driver')">
+          <i class="bi bi-phone me-1"></i> Driver View
+        </button>
+      </div>
+      <button type="button" class="btn btn-sm btn-success d-flex align-items-center gap-1 font-mono fw-bold text-white shadow-sm" onclick="openDriverInNewTab()" title="Open Driver View in a 2nd tab at this exact base URL">
+        <i class="bi bi-box-arrow-up-right"></i> Open Driver Tab
+      </button>
       <button class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#clusterCompareModal">
         <i class="bi bi-diagram-3-fill"></i> Model Comparison
       </button>
@@ -313,7 +370,7 @@
 <!-- Live Toast Notifications Container -->
 <div class="toast-container-custom" id="toastContainer"></div>
 
-<div class="container-fluid px-4 pb-4">
+<div id="adminViewContainer" class="container-fluid px-4 pb-4">
 
   <!-- Summary KPI Cards Row -->
   <div class="row g-3 mb-3" id="cards">
@@ -745,6 +802,152 @@
     </div>
   </div>
 
+</div>
+
+<!-- Driver Cockpit HUD Container (Tab-isolated view mode for Driver at http://127.0.0.1:5001/) -->
+<div id="driverViewContainer" class="d-none" style="background: #0f172a; min-height: 85vh; padding: 1.5rem 0.75rem; color: #f8fafc;">
+  <div class="container" style="max-width: 620px;">
+    
+    <!-- Top Ambulance Selector Toolbar -->
+    <div class="d-flex justify-content-between align-items-center mb-3 p-2 rounded bg-dark border border-secondary">
+      <div class="small text-white-50 font-mono fw-bold">
+        <i class="bi bi-truck-flatbed text-danger me-1"></i> COCKPIT VEHICLE:
+      </div>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Ambulance Selector">
+        <button type="button" id="hudAmb1" class="btn btn-primary font-mono py-1 px-3" onclick="selectHudAmbulance(1)">Amb 1 (AP21-1001)</button>
+        <button type="button" id="hudAmb2" class="btn btn-outline-secondary font-mono py-1 px-3" onclick="selectHudAmbulance(2)">Amb 2 (AP21-1002)</button>
+        <button type="button" id="hudAmb3" class="btn btn-outline-secondary font-mono py-1 px-3" onclick="selectHudAmbulance(3)">Amb 3 (AP21-1003)</button>
+      </div>
+    </div>
+
+    <!-- Vehicle Status Header Card -->
+    <div class="hud-card mb-3">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <div class="small text-muted text-uppercase fw-semibold" style="font-size: 0.72rem;">Assigned Vehicle</div>
+          <h4 class="mb-0 font-mono fw-bold text-white" id="hudVehicle">Loading...</h4>
+        </div>
+        <div class="text-end">
+          <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size: 0.72rem;">Vehicle Status</div>
+          <span id="hudStatus" class="badge text-bg-secondary font-mono px-3 py-2 fs-6">...</span>
+        </div>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top border-secondary text-muted small" style="font-size: 0.75rem;">
+        <span id="hudUpdated">--:--:--</span>
+        <span><i class="bi bi-geo-alt-fill text-success"></i> GPS Lock Active • Direct Base URL</span>
+      </div>
+    </div>
+
+    <!-- Active Emergency Trip HUD -->
+    <div id="hudTrip" class="hud-card mb-3 d-none border-danger">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="fw-bold text-danger d-flex align-items-center gap-2">
+          <i class="bi bi-exclamation-octagon-fill"></i>
+          <span>ACTIVE EMERGENCY MISSION</span>
+        </div>
+        <span class="badge bg-danger">Priority 1</span>
+      </div>
+      
+      <div id="hudTripInfo" class="mb-3 p-3 rounded bg-dark border border-secondary"></div>
+
+      <!-- Triage Severity Assessment (Driver Control) -->
+      <div class="mb-3 p-3 rounded bg-dark border border-secondary">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="small text-white-50 fw-bold" style="font-size: 0.72rem;">
+            <i class="bi bi-heart-pulse-fill text-danger me-1"></i> TRIAGE SEVERITY ASSESSMENT:
+          </span>
+          <span id="hudActiveSeverityBadge" class="badge bg-secondary font-mono">--</span>
+        </div>
+        <div class="btn-group w-100" role="group" aria-label="Triage Severity Level">
+          <button type="button" id="hudSevBtn1" class="btn btn-sm btn-outline-success font-mono" onclick="setHudTripSeverity(1)" title="Minor injury / Stable">1 Minor</button>
+          <button type="button" id="hudSevBtn2" class="btn btn-sm btn-outline-info font-mono" onclick="setHudTripSeverity(2)" title="Low severity">2 Low</button>
+          <button type="button" id="hudSevBtn3" class="btn btn-sm btn-outline-warning font-mono" onclick="setHudTripSeverity(3)" title="Moderate distress">3 Mod</button>
+          <button type="button" id="hudSevBtn4" class="btn btn-sm btn-outline-warning font-mono" onclick="setHudTripSeverity(4)" title="High / Critical care">4 High</button>
+          <button type="button" id="hudSevBtn5" class="btn btn-sm btn-outline-danger font-mono" onclick="setHudTripSeverity(5)" title="Fatal / Immediate ICU">5 Fatal</button>
+        </div>
+        <div class="small text-muted mt-1" style="font-size: 0.68rem;">Tap to re-classify patient severity; informs hospital ICU admission.</div>
+      </div>
+
+      <!-- Destination Hospital Selector (Driver Control) -->
+      <div class="mb-3 p-3 rounded bg-dark border border-secondary">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="small text-white-50 fw-bold" style="font-size: 0.72rem;">
+            <i class="bi bi-hospital-fill text-primary me-1"></i> RECEIVING FACILITY:
+          </span>
+          <button id="hudToggleHospBtn" class="btn btn-sm btn-outline-primary py-0 px-2 font-mono" style="font-size:0.75rem;" onclick="toggleHudHospitalPicker()">
+            <i class="bi bi-arrow-repeat me-1"></i> Change Hospital
+          </button>
+        </div>
+        <div id="hudCurrentHospDisplay" class="d-flex justify-content-between align-items-center p-2 rounded bg-black bg-opacity-40 border border-secondary">
+          <div>
+            <div class="fw-bold text-white fs-6" id="hudHospName">Loading...</div>
+            <div class="text-white-50" style="font-size:0.72rem;" id="hudHospDetails">--</div>
+          </div>
+          <span class="badge bg-primary font-mono" id="hudHospEtaBadge">-- min</span>
+        </div>
+
+        <!-- Hospital Selection Dropdown Panel -->
+        <div id="hudHospPickerDiv" class="d-none mt-2 pt-2 border-top border-secondary">
+          <label class="small text-white-50 mb-1" style="font-size: 0.72rem;">Select Destination Facility (Ranked by Proximity):</label>
+          <select id="hudHospSelect" class="form-select form-select-sm bg-dark text-white border-secondary mb-2" style="font-size: 0.8rem;"></select>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-primary flex-grow-1 font-mono fw-bold" onclick="submitHudHospitalChange()">
+              <i class="bi bi-check-circle-fill me-1"></i> Confirm Destination
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary font-mono" onclick="toggleHudHospitalPicker()">Cancel</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Simulated Patient Telemetry Stream -->
+      <div class="mb-3">
+        <div class="small text-muted fw-bold mb-1" style="font-size: 0.72rem;">LIVE PATIENT TELEMETRY (LINKED TO HOSPITAL ICU):</div>
+        <div class="row g-2 text-center font-mono">
+          <div class="col-4">
+            <div class="vitals-box">
+              <div class="small text-danger fw-bold"><i class="bi bi-heart-pulse-fill"></i> HR</div>
+              <div class="fs-5 fw-bold text-white">78 <span style="font-size:0.7rem">BPM</span></div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="vitals-box">
+              <div class="small text-info fw-bold"><i class="bi bi-droplet-fill"></i> SpO2</div>
+              <div class="fs-5 fw-bold text-white">98%</div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="vitals-box">
+              <div class="small text-warning fw-bold"><i class="bi bi-speedometer2"></i> BP</div>
+              <div class="fs-5 fw-bold text-white">120/80</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <a id="hudNavBtn" class="btn-nav-gps mb-3" target="_blank" rel="noopener">
+        <i class="bi bi-cursor-fill"></i> Launch Google Maps Navigation
+      </a>
+      
+      <button id="hudNextBtn" class="btn btn-action-main w-100" onclick="advanceHudTrip()">Advance Trip Stage</button>
+      <div id="hudMsg" class="mt-2"></div>
+    </div>
+
+    <!-- Idle State Card -->
+    <div id="hudIdle" class="alert alert-success d-none hud-card text-success border-success mb-3 p-4 text-center">
+      <div class="fs-1 mb-2"><i class="bi bi-shield-check"></i></div>
+      <h5 class="fw-bold">Unit On Standby</h5>
+      <div class="text-white-50 small">You are available in the fleet pool. Stand by at your designated pre-positioning hub for dispatch.</div>
+    </div>
+
+    <!-- Event Logs -->
+    <div class="hud-card">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-bell-fill text-warning me-1"></i> Mission Notifications</h6>
+      </div>
+      <ul class="list-unstyled small mb-0 font-mono" id="hudNotes" style="max-height: 200px; overflow-y: auto;"></ul>
+    </div>
+
+  </div>
 </div>
 
 <!-- Route & Algorithmic Inspector Modal -->
@@ -1637,11 +1840,262 @@ $('recheckBtn').onclick = async () => {
   note(r.ok ? 'info' : 'danger', r.ok ? rerouteText(r.data) : esc(r.data.error)); refresh(); loadNotes();
 };
 
+// ==================== TAB-ISOLATED VIEW MODE & DRIVER HUD ====================
+let hudTripId = null;
+let hudCurrentTrip = null;
+let hudSelectedAmbId = parseInt(sessionStorage.getItem('preferred_ambulance_id') || '1', 10);
+
+function openDriverInNewTab() {
+  window.open('/?mode=driver', '_blank');
+}
+
+function switchViewMode(mode) {
+  sessionStorage.setItem('preferred_view', mode);
+  applyViewMode(mode);
+}
+
+function applyViewMode(mode) {
+  const isAdmin = (mode !== 'driver');
+  const adminContainer = $('adminViewContainer');
+  const driverContainer = $('driverViewContainer');
+  const btnAdmin = $('viewBtnAdmin');
+  const btnDriver = $('viewBtnDriver');
+
+  if (isAdmin) {
+    if (adminContainer) adminContainer.classList.remove('d-none');
+    if (driverContainer) driverContainer.classList.add('d-none');
+    if (btnAdmin) {
+      btnAdmin.className = 'btn btn-sm btn-primary fw-bold font-mono px-3';
+    }
+    if (btnDriver) {
+      btnDriver.className = 'btn btn-sm btn-outline-light fw-bold font-mono px-3';
+    }
+    if (window.map) {
+      setTimeout(() => window.map.invalidateSize(), 150);
+    }
+  } else {
+    if (adminContainer) adminContainer.classList.add('d-none');
+    if (driverContainer) driverContainer.classList.remove('d-none');
+    if (btnAdmin) {
+      btnAdmin.className = 'btn btn-sm btn-outline-light fw-bold font-mono px-3';
+    }
+    if (btnDriver) {
+      btnDriver.className = 'btn btn-sm btn-primary fw-bold font-mono px-3';
+    }
+    loadDriverHUD();
+  }
+}
+
+function selectHudAmbulance(ambId) {
+  hudSelectedAmbId = ambId;
+  sessionStorage.setItem('preferred_ambulance_id', ambId);
+  loadDriverHUD();
+}
+
+async function loadDriverHUD() {
+  const currentView = sessionStorage.getItem('preferred_view') || 'admin';
+  if (currentView !== 'driver') return;
+
+  try {
+    const r = await fetch(`/api/driver/status?preview=1&ambulance_id=${hudSelectedAmbId}`);
+    if (r.status === 401) return location = '/login';
+    const s = await r.json();
+    if (!r.ok) {
+      if ($('hudVehicle')) $('hudVehicle').textContent = s.error || 'Error loading status';
+      return;
+    }
+
+    const currAmbId = s.ambulance.ambulance_id || hudSelectedAmbId;
+    [1, 2, 3].forEach(id => {
+      const el = $('hudAmb' + id);
+      if (el) {
+        el.className = (id === currAmbId ? 'btn btn-primary font-mono py-1 px-3' : 'btn btn-outline-secondary font-mono py-1 px-3');
+      }
+    });
+
+    if ($('hudVehicle')) $('hudVehicle').textContent = s.ambulance.vehicle_number || `Ambulance ${currAmbId}`;
+    if ($('hudStatus')) {
+      $('hudStatus').className = 'badge text-bg-' + (BADGE[s.ambulance.status] || 'secondary') + ' font-mono px-3 py-2 fs-6';
+      $('hudStatus').textContent = s.ambulance.status || 'AVAILABLE';
+    }
+
+    const t = s.trip;
+    hudCurrentTrip = t;
+    if ($('hudTrip')) $('hudTrip').classList.toggle('d-none', !t);
+    if ($('hudIdle')) $('hudIdle').classList.toggle('d-none', !!t);
+
+    if (t) {
+      hudTripId = t.dispatch_id;
+      if ($('hudTripInfo')) {
+        $('hudTripInfo').innerHTML = `
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fs-5 fw-bold text-white text-capitalize">${esc(t.emergency_type)}</span>
+            <span class="badge ${t.severity >= 4 ? 'bg-danger' : t.severity === 3 ? 'bg-warning text-dark' : 'bg-info'}">Triage Severity ${t.severity}</span>
+          </div>
+          <div class="text-white-50 small mb-1"><i class="bi bi-stopwatch text-warning me-1"></i> Estimated ETA: <b class="text-warning">${t.eta_min} min</b></div>
+          <div class="mt-2 pt-2 border-top border-secondary text-info fw-semibold"><i class="bi bi-geo-alt-fill me-1"></i> Immediate Objective: ${t.go_to.toUpperCase()}</div>
+        `;
+      }
+
+      updateHudSeverityButtons(t.severity);
+
+      if ($('hudHospName')) $('hudHospName').textContent = t.hospital;
+      if ($('hudHospDetails')) $('hudHospDetails').textContent = `${t.available_beds ?? '?'} beds available • ${t.specialties || 'General'}`;
+      if ($('hudHospEtaBadge')) $('hudHospEtaBadge').textContent = `${t.eta_min} min`;
+
+      if ($('hudNavBtn')) $('hudNavBtn').href = `https://www.google.com/maps/dir/?api=1&destination=${t.go_to_lat},${t.go_to_lon}`;
+      if ($('hudNextBtn')) {
+        $('hudNextBtn').innerHTML = `<i class="bi bi-arrow-right-circle-fill me-2"></i> ${esc(s.next_step || 'Advance Trip Stage')}`;
+        $('hudNextBtn').disabled = !s.next_step;
+      }
+    }
+
+    if ($('hudUpdated')) $('hudUpdated').textContent = 'Sync: ' + new Date().toLocaleTimeString();
+
+    const n = await (await fetch('/api/notifications')).json();
+    if ($('hudNotes')) {
+      $('hudNotes').innerHTML = n.map(x => `
+        <li class="p-2 mb-1 rounded bg-dark border border-secondary">
+          <div class="text-white-50" style="font-size:0.68rem;">${esc(x.created_at)}</div>
+          <div class="text-white mt-1">${esc(x.message)}</div>
+        </li>
+      `).join('') || '<li class="text-muted p-2">No active notifications</li>';
+    }
+  } catch (err) {
+    console.error("Driver HUD sync error", err);
+  }
+}
+
+function updateHudSeverityButtons(activeLvl) {
+  if ($('hudActiveSeverityBadge')) {
+    $('hudActiveSeverityBadge').textContent = 'Level ' + activeLvl;
+    $('hudActiveSeverityBadge').className = 'badge font-mono ' + 
+      (activeLvl >= 5 ? 'bg-danger' : activeLvl === 4 ? 'bg-danger' : activeLvl === 3 ? 'bg-warning text-dark' : activeLvl === 2 ? 'bg-info' : 'bg-success');
+  }
+
+  const classes = {
+    1: ['btn-outline-success', 'btn-success text-white'],
+    2: ['btn-outline-info', 'btn-info text-dark'],
+    3: ['btn-outline-warning', 'btn-warning text-dark'],
+    4: ['btn-outline-warning', 'btn-warning text-dark'],
+    5: ['btn-outline-danger', 'btn-danger text-white']
+  };
+
+  for (let i = 1; i <= 5; i++) {
+    const btn = $('hudSevBtn' + i);
+    if (!btn) continue;
+    const [outline, solid] = classes[i];
+    if (i === activeLvl) {
+      btn.className = 'btn btn-sm ' + solid + ' font-mono fw-bold';
+    } else {
+      btn.className = 'btn btn-sm ' + outline + ' font-mono';
+    }
+  }
+}
+
+async function setHudTripSeverity(lvl) {
+  if (!hudTripId) return;
+  try {
+    const r = await fetch(`/api/dispatches/${hudTripId}/severity`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({severity: lvl})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      $('hudMsg').innerHTML = `<div class="alert alert-success py-2 small rounded"><i class="bi bi-check-circle-fill me-1"></i> Patient triage severity updated to Level ${lvl}.</div>`;
+      setTimeout(() => $('hudMsg').innerHTML = '', 3500);
+      loadDriverHUD();
+    } else {
+      $('hudMsg').innerHTML = `<div class="alert alert-danger py-2 small rounded">${esc(d.error)}</div>`;
+    }
+  } catch (e) {
+    $('hudMsg').innerHTML = `<div class="alert alert-danger py-2 small rounded">Network error updating severity</div>`;
+  }
+}
+
+async function toggleHudHospitalPicker() {
+  const div = $('hudHospPickerDiv');
+  const isOpening = div.classList.contains('d-none');
+  div.classList.toggle('d-none');
+  if (isOpening && hudTripId) {
+    $('hudHospSelect').innerHTML = '<option value="">Loading candidate hospitals...</option>';
+    try {
+      const r = await fetch(`/api/dispatches/${hudTripId}/hospital-options`);
+      const options = await r.json();
+      if (!r.ok || !options.length) {
+        $('hudHospSelect').innerHTML = '<option value="">No alternative hospitals reachable</option>';
+        return;
+      }
+      $('hudHospSelect').innerHTML = options.map(h => {
+        const currentTag = h.is_current ? ' (Current Destination)' : '';
+        const bedTag = `${h.available_beds} beds`;
+        const etaTag = h.eta_min != null ? `${h.eta_min} min` : 'Unreachable';
+        const tierTag = `Tier ${h.tier}`;
+        const matchTag = h.specialty_match ? '✓ Specialty' : '';
+        const disabled = !h.reachable || !h.is_available ? 'disabled' : '';
+        const selected = h.is_current ? 'selected' : '';
+        return `<option value="${h.hospital_id}" ${selected} ${disabled}>
+          ${esc(h.name)} — ${etaTag} [${bedTag} • ${tierTag} ${matchTag}]${currentTag}
+        </option>`;
+      }).join('');
+    } catch (e) {
+      $('hudHospSelect').innerHTML = '<option value="">Error fetching hospitals</option>';
+    }
+  }
+}
+
+async function submitHudHospitalChange() {
+  if (!hudTripId) return;
+  const hid = $('hudHospSelect').value;
+  if (!hid) {
+    alert('Please select a hospital from the list');
+    return;
+  }
+  try {
+    const r = await fetch(`/api/dispatches/${hudTripId}/hospital`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({hospital_id: parseInt(hid, 10)})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      $('hudHospPickerDiv').classList.add('d-none');
+      $('hudMsg').innerHTML = `<div class="alert alert-success py-2 small rounded"><i class="bi bi-geo-alt-fill me-1"></i> Destination rerouted to <b>${esc(d.new_hospital)}</b> (ETA: ${d.eta_hospital_min} min).</div>`;
+      setTimeout(() => $('hudMsg').innerHTML = '', 4000);
+      loadDriverHUD();
+    } else {
+      $('hudMsg').innerHTML = `<div class="alert alert-danger py-2 small rounded">${esc(d.error)}</div>`;
+    }
+  } catch (e) {
+    $('hudMsg').innerHTML = `<div class="alert alert-danger py-2 small rounded">Error submitting hospital change</div>`;
+  }
+}
+
+async function advanceHudTrip() {
+  if (!hudTripId) return;
+  const r = await fetch(`/api/dispatches/${hudTripId}/advance`, {method: 'POST'});
+  const d = await r.json();
+  $('hudMsg').innerHTML = r.ok ? '' : `<div class="alert alert-danger py-2 small rounded">${esc(d.error)}</div>`;
+  loadDriverHUD();
+}
+
 // Initial calls & intervals
 refresh(); loadNotes(); loadPrepo();
 setInterval(refresh, 5000); 
 setInterval(loadNotes, 5000); 
 setInterval(loadPrepo, 30000);
+
+// Initialize tab view mode (from URL query ?mode=driver or sessionStorage)
+const initParams = new URLSearchParams(window.location.search);
+if (initParams.get('mode') === 'driver') {
+  sessionStorage.setItem('preferred_view', 'driver');
+  // Clean URL to keep address bar strictly http://127.0.0.1:5001/
+  window.history.replaceState({}, document.title, window.location.pathname);
+}
+const initialView = sessionStorage.getItem('preferred_view') || 'admin';
+applyViewMode(initialView);
+setInterval(loadDriverHUD, 4000);
 </script>
 </body>
 </html>
