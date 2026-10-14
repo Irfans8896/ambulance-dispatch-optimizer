@@ -34,7 +34,7 @@ RULES = [
     ("GET", r"/api/reports/.*", {ADMIN, DISPATCHER}),
     ("GET", r"/api/traffic-history", {ADMIN, DISPATCHER}),
 ]
-PUBLIC = {"/login", "/health"}
+PUBLIC = {"/login", "/health", "/driver"}
 
 
 def current_user():

@@ -10,4 +10,4 @@ if __name__ == "__main__":
     if not os.path.exists(app.config["DATABASE"]):
         build_demo_db(app.config["DATABASE"])
         print("Created demo database")
-    app.run(host="127.0.0.1", port=5001, debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=True)

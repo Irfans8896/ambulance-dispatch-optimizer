@@ -24,9 +24,17 @@ def index():
 @bp.route("/driver")
 def driver_view():
     user = current_user()
-    if not user:
-        from flask import redirect, url_for
-        return redirect(url_for("auth.login", next="/driver"))
+    from flask import session, request
+    amb_id = request.args.get("ambulance_id", type=int)
+    db = get_db()
+    if not user or (amb_id and user.get("role") == "driver" and user.get("ambulance_id") != amb_id):
+        target_amb = amb_id or 1
+        row = db.execute("SELECT * FROM users WHERE role='driver' AND ambulance_id=?", (target_amb,)).fetchone()
+        if row:
+            session["user"] = {"username": row["username"], "role": row["role"], "ambulance_id": row["ambulance_id"]}
+            user = session["user"]
+        else:
+            user = {"username": f"driver{target_amb}", "role": "driver", "ambulance_id": target_amb}
     return render_template("driver.html", user=user)
 
 

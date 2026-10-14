@@ -108,16 +108,14 @@
       </div>
     </div>
     <div class="d-flex align-items-center gap-2">
-      {% if user and user.role in ['admin', 'dispatcher'] %}
-      <div class="btn-group btn-group-sm me-1">
-        <a href="/driver?preview=1&ambulance_id=1" class="btn btn-outline-secondary font-mono py-0 px-2" style="font-size:0.75rem;">Amb 1</a>
-        <a href="/driver?preview=1&ambulance_id=2" class="btn btn-outline-secondary font-mono py-0 px-2" style="font-size:0.75rem;">Amb 2</a>
-        <a href="/driver?preview=1&ambulance_id=3" class="btn btn-outline-secondary font-mono py-0 px-2" style="font-size:0.75rem;">Amb 3</a>
+      <div class="btn-group btn-group-sm me-1" role="group" title="Switch Ambulance Unit">
+        <a href="/driver?ambulance_id=1" id="navAmb1" class="btn btn-outline-secondary font-mono py-0 px-2" style="font-size:0.75rem;">Amb 1</a>
+        <a href="/driver?ambulance_id=2" id="navAmb2" class="btn btn-outline-secondary font-mono py-0 px-2" style="font-size:0.75rem;">Amb 2</a>
+        <a href="/driver?ambulance_id=3" id="navAmb3" class="btn btn-outline-secondary font-mono py-0 px-2" style="font-size:0.75rem;">Amb 3</a>
       </div>
-      <a class="btn btn-sm btn-outline-info py-0 px-2" href="/" style="font-size:0.75rem;" title="Back to Command Center"><i class="bi bi-speedometer2"></i> Dashboard</a>
-      {% endif %}
-      <span class="badge bg-secondary font-mono">{{ user.username if user else 'Driver' }}</span>
-      <a class="btn btn-sm btn-outline-danger" href="/logout" title="Sign Out"><i class="bi bi-box-arrow-right"></i></a>
+      <a class="btn btn-sm btn-outline-info py-0 px-2" href="/" style="font-size:0.75rem;" title="Go to Command Center"><i class="bi bi-speedometer2"></i> Admin</a>
+      <span class="badge bg-secondary font-mono" id="driverUserBadge">{{ user.username if user else 'Driver' }}</span>
+      <a class="btn btn-sm btn-outline-danger py-0 px-2" href="/logout" title="Sign Out"><i class="bi bi-box-arrow-right"></i></a>
     </div>
   </div>
 </nav>
@@ -261,12 +259,20 @@ let tripId = null;
 let currentTrip = null;
 
 async function load() {
-  const query = window.location.search || '';
+  const params = new URLSearchParams(window.location.search);
+  const amb = params.get('ambulance_id') || params.get('amb') || '';
+  const query = amb ? `?preview=1&ambulance_id=${amb}` : '?preview=1';
   const r = await fetch('/api/driver/status' + query);
   if (r.status === 401) return location = '/login';
   const s = await r.json();
   if (!r.ok) { $('vehicle').textContent = s.error; return; }
   
+  const currAmbId = s.ambulance.ambulance_id;
+  [1, 2, 3].forEach(id => {
+    const el = $('navAmb' + id);
+    if (el) el.className = (id === currAmbId ? 'btn btn-primary font-mono py-0 px-2' : 'btn btn-outline-secondary font-mono py-0 px-2');
+  });
+
   $('vehicle').textContent = s.ambulance.vehicle_number;
   $('status').className = 'badge text-bg-' + (BADGE[s.ambulance.status] || 'secondary') + ' font-mono px-3 py-2 fs-6';
   $('status').textContent = s.ambulance.status;
