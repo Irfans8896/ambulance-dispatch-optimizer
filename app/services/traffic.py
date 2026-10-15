@@ -26,6 +26,32 @@ def set_setting(conn, key, value):
     conn.commit()
 
 
+WEATHER_FACTORS = {
+    "CLEAR": 1.0,
+    "RAIN": 1.25,
+    "MONSOON": 1.6,
+    "FLOOD": 2.2,
+}
+
+WEATHER_LABELS = {
+    "CLEAR": "☀️ Clear (1.0x baseline)",
+    "RAIN": "🌧️ Moderate Rain (+25% transit delay)",
+    "MONSOON": "⛈️ Severe Monsoon (+60% transit delay)",
+    "FLOOD": "🌊 Flash Flood / Waterlogged (+120% delay)",
+}
+
+
+def current_weather(conn):
+    return get_setting(conn, "current_weather", "CLEAR")
+
+
+def set_weather(conn, weather_mode):
+    w = (weather_mode or "").upper()
+    if w not in WEATHER_FACTORS:
+        raise ValueError(f"Invalid weather: {weather_mode}. Allowed: {list(WEATHER_FACTORS.keys())}")
+    set_setting(conn, "current_weather", w)
+
+
 def auto_traffic_on(conn):
     return get_setting(conn, "auto_traffic", "0") == "1"
 
@@ -36,8 +62,10 @@ def effective_rows(conn):
     conn.row_factory = sqlite3.Row
     rows = [dict(r) for r in conn.execute("SELECT * FROM road_edges")]
     bump = auto_traffic_on(conn) and is_rush_hour()
+    w = current_weather(conn)
     for r in rows:
         r["base_traffic_level"] = r["traffic_level"]
+        r["weather"] = w
         if bump:
             r["traffic_level"] = STEP_UP.get(r["traffic_level"], r["traffic_level"])
     return rows

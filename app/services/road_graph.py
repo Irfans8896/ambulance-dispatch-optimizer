@@ -74,15 +74,24 @@ class RoadGraph:
             self.graph.add_edge(a, b, weight=road.travel_weight(),
                                 distance=road.distance)
 
-    def update_road(self, source, destination, traffic_level=None, road_condition=None):
-        """Used in Week 4 for live traffic. Rebuilds the edge weight."""
+    def update_road(self, source, destination, traffic_level=None, road_condition=None, weather=None):
+        """Used in Week 4 for live traffic & weather. Rebuilds the edge weight."""
         key = tuple(sorted((source, destination)))
         road = self.roads[key]
         if traffic_level:
             road.traffic_level = traffic_level
         if road_condition:
             road.road_condition = road_condition
+        if weather:
+            road.weather = weather
         self._refresh_edge(key)
+
+    def set_all_weather(self, weather):
+        """Applies a uniform weather condition across all roads."""
+        for road in self.roads.values():
+            road.weather = weather
+        for key in self.roads:
+            self._refresh_edge(key)
 
     def shortest_route(self, source, target):
         """Return (path, total_weight, total_distance_km)."""
@@ -91,10 +100,11 @@ class RoadGraph:
         return path, cost, distance
 
     @classmethod
-    def from_rows(cls, rows):
+    def from_rows(cls, rows, weather=None):
         """Build from database rows of the road_edges table."""
         g = cls()
         for r in rows:
+            w = weather or r.get("weather", "CLEAR")
             g.add_road(Road(r["source"], r["destination"], r["distance"],
-                            r["traffic_level"], r["road_condition"]))
+                            r["traffic_level"], r["road_condition"], weather=w))
         return g

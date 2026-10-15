@@ -20,6 +20,7 @@ RULES = [
     ("GET", r"/api/dispatches/\d+/hospital-options", {ADMIN, DISPATCHER, DRIVER}),
     ("POST", r"/api/dispatches/recheck", {ADMIN, DISPATCHER}),
     ("POST", r"/api/settings/auto-traffic", {ADMIN}),
+    ("POST", r"/api/settings/weather", {ADMIN, DISPATCHER}),
     ("POST", r"/api/demo/simulate", {ADMIN}),
     ("GET", r"/api/queue", {ADMIN, DISPATCHER}),
     ("GET", r"/api/analytics", {ADMIN, DISPATCHER}),

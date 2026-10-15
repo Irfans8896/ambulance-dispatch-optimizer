@@ -8,7 +8,7 @@ from flask import Blueprint, Response, jsonify, render_template
 from .auth import current_user
 from .db import get_db
 from .services.dispatch import queued_incidents
-from .services.traffic import effective_rows, auto_traffic_on, is_rush_hour
+from .services.traffic import effective_rows, auto_traffic_on, is_rush_hour, current_weather
 
 bp = Blueprint("dashboard", __name__)
 
@@ -64,7 +64,7 @@ def state():
         "hospitals": rows("SELECT * FROM hospitals"),
         "roads": roads,
         "queue": [dict(q) for q in queued_incidents(db)],
-        "settings": {"auto_traffic": auto_traffic_on(db), "rush_hour_now": is_rush_hour()},
+        "settings": {"auto_traffic": auto_traffic_on(db), "rush_hour_now": is_rush_hour(), "weather": current_weather(db)},
         "junctions": {r["junction_id"]: [r["latitude"], r["longitude"]]
                       for r in rows("SELECT * FROM junctions")},
         "dispatches": dispatches,

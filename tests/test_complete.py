@@ -258,3 +258,39 @@ def test_driver_can_get_hospital_options_and_change_hospital():
 
     # Changing to invalid hospital rejected
     assert login(app, "driver2").post(change_url, json={"hospital_id": 9999}).status_code == 400
+
+
+def test_weather_simulation_and_friction_weights():
+    app = make_app(auth=True)
+    admin = login(app, "admin")
+
+    # 1. Default weather is CLEAR (factor 1.0)
+    state = admin.get("/api/state").get_json()
+    assert state["settings"]["weather"] == "CLEAR"
+
+    # 2. Set weather to RAIN (+25% friction)
+    r_rain = admin.post("/api/settings/weather", json={"weather": "RAIN"})
+    assert r_rain.status_code == 200
+    res_rain = r_rain.get_json()
+    assert res_rain["ok"] is True
+    assert res_rain["weather"] == "RAIN"
+    assert res_rain["factor"] == 1.25
+
+    # 3. State reflects updated weather
+    state_rain = admin.get("/api/state").get_json()
+    assert state_rain["settings"]["weather"] == "RAIN"
+    assert any(r.get("weather") == "RAIN" for r in state_rain["roads"])
+
+    # 4. Set weather to MONSOON (+60% friction)
+    r_monsoon = admin.post("/api/settings/weather", json={"weather": "MONSOON"})
+    assert r_monsoon.status_code == 200
+    assert r_monsoon.get_json()["factor"] == 1.6
+
+    # 5. Invalid weather rejected
+    assert admin.post("/api/settings/weather", json={"weather": "TORNADO"}).status_code == 400
+
+    # 6. Dispatcher can also update weather, but unauthenticated cannot
+    disp = login(app, "dispatcher")
+    assert disp.post("/api/settings/weather", json={"weather": "CLEAR"}).status_code == 200
+    anon = app.test_client()
+    assert anon.post("/api/settings/weather", json={"weather": "RAIN"}).status_code == 401

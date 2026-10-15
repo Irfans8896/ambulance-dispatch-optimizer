@@ -347,6 +347,16 @@
       <button type="button" class="btn btn-sm btn-success d-flex align-items-center gap-1 font-mono fw-bold text-white shadow-sm" onclick="openDriverInNewTab()" title="Open Driver View in a 2nd tab at this exact base URL">
         <i class="bi bi-box-arrow-up-right"></i> Open Driver Tab
       </button>
+      <!-- Weather Simulation Selector -->
+      <div class="d-flex align-items-center bg-black bg-opacity-40 p-1 px-2 rounded border border-secondary" title="Simulate weather condition and road friction">
+        <span class="text-white-50 small me-1 fw-bold" style="font-size:0.75rem;"><i class="bi bi-cloud-sun-fill text-warning me-1"></i>Weather:</span>
+        <select id="weatherSelect" class="form-select form-select-sm bg-dark text-white border-0 py-0 fw-semibold" style="font-size:0.78rem; width: auto; cursor: pointer;" onchange="changeWeather(this.value)">
+          <option value="CLEAR">☀️ Clear (1.0x)</option>
+          <option value="RAIN">🌧️ Rain (+25%)</option>
+          <option value="MONSOON">⛈️ Monsoon (+60%)</option>
+          <option value="FLOOD">🌊 Flood (+120%)</option>
+        </select>
+      </div>
       <button class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#clusterCompareModal">
         <i class="bi bi-diagram-3-fill"></i> Model Comparison
       </button>
@@ -390,6 +400,7 @@
             <i class="bi bi-geo-alt-fill text-danger"></i>
             <span>Live GIS Dispatch Map</span>
             <span class="badge bg-light text-muted border font-mono fw-normal" style="font-size: 0.75rem;">Click map to place incident</span>
+            <span id="weatherIndicator" class="badge font-mono fw-semibold ms-2 d-none"></span>
           </div>
           <div class="d-flex gap-2 flex-wrap align-items-center">
             <div class="input-group input-group-sm">
@@ -409,14 +420,14 @@
           <div id="map"></div>
           <div class="d-flex justify-content-between align-items-center flex-wrap pt-2 px-2 small text-muted">
             <div class="d-flex align-items-center gap-3">
-              <span class="fw-semibold text-dark">Traffic Weights:</span>
+              <span class="fw-semibold text-dark">Traffic & Weather Weights:</span>
               <span><span style="color:#10b981; font-size:1.2rem;">&#9644;</span> Low (1.0x)</span>
               <span><span style="color:#f59e0b; font-size:1.2rem;">&#9644;</span> Moderate (1.8x)</span>
               <span><span style="color:#ef4444; font-size:1.2rem;">&#9644;</span> Congested (3.2x)</span>
               <span><span style="color:#64748b;">- - -</span> Closed (Blocked)</span>
             </div>
             <div class="font-mono text-muted" style="font-size: 0.75rem;">
-              Dynamic Dijkstra: \( \text{weight} = d \times \tau \times \rho \)
+              Dynamic Dijkstra: \( \text{weight} = d \times \tau \times \rho \times \omega \)
             </div>
           </div>
         </div>
@@ -1351,6 +1362,27 @@ async function refresh() {
   $('rushNow').textContent = s.settings.rush_hour_now ? '⚡ RUSH HOUR ACTIVE' : 'Normal Traffic';
   $('rushNow').className = 'badge ' + (s.settings.rush_hour_now ? 'text-bg-danger' : 'text-bg-secondary') + ' ms-1';
 
+  if ($('weatherSelect') && document.activeElement !== $('weatherSelect') && s.settings.weather) {
+    $('weatherSelect').value = s.settings.weather;
+  }
+  const currWeather = s.settings.weather || 'CLEAR';
+  const wInd = $('weatherIndicator');
+  if (wInd) {
+    if (currWeather === 'CLEAR') {
+      wInd.classList.add('d-none');
+    } else {
+      wInd.classList.remove('d-none');
+      const wLabels = {
+        RAIN: '🌧️ Rain Protocol (+25% Friction)',
+        MONSOON: '⛈️ Severe Monsoon (+60% Friction)',
+        FLOOD: '🌊 Flash Flood / Waterlogged (+120% Delay)'
+      };
+      wInd.textContent = wLabels[currWeather] || currWeather;
+      wInd.className = 'badge font-mono fw-semibold ms-2 ' + 
+        (currWeather === 'FLOOD' ? 'bg-danger text-white' : currWeather === 'MONSOON' ? 'bg-warning text-dark' : 'bg-info text-dark');
+    }
+  }
+
   // Render Top KPI Cards
   $('cards').innerHTML = `
     <div class="col-6 col-md-4 col-xl">
@@ -1833,6 +1865,17 @@ $('autoTraffic').onchange = async () => {
   const r = await post('/api/settings/auto-traffic', {enabled: $('autoTraffic').checked});
   note(r.ok ? 'info' : 'danger', r.ok ? 'Automatic rush-hour traffic ' + (r.data.auto_traffic ? 'ON. ' : 'OFF. ') + rerouteText(r.data) : esc(r.data.error));
   refresh(); loadNotes();
+};
+
+window.changeWeather = async function(val) {
+  const r = await post('/api/settings/weather', {weather: val});
+  if (r.ok) {
+    showToast('Weather Protocol Active', r.data.label + '. ' + rerouteText(r.data), 'info');
+    note('info', 'Weather condition updated to ' + esc(r.data.label) + '. ' + rerouteText(r.data));
+    refresh(); loadNotes();
+  } else {
+    showToast('Weather Error', r.data.error, 'danger');
+  }
 };
 
 $('recheckBtn').onclick = async () => {

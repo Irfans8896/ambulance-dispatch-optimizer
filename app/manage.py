@@ -279,6 +279,27 @@ def auto_traffic():
     return jsonify({"auto_traffic": enabled, "rush_hour_now": is_rush_hour(), **after_change(db)})
 
 
+@bp.route("/api/settings/weather", methods=["POST"])
+def change_weather():
+    from .services.traffic import WEATHER_FACTORS, WEATHER_LABELS, set_weather
+    from .services.ops import notify
+    data = _json_or_400()
+    weather = (data.get("weather") or "").upper()
+    if weather not in WEATHER_FACTORS:
+        return jsonify({"error": f"Invalid weather mode. Choose from: {list(WEATHER_FACTORS.keys())}"}), 400
+    db = get_db()
+    set_weather(db, weather)
+    label = WEATHER_LABELS[weather]
+    notify(db, f"Weather protocol updated: {label}")
+    return jsonify({
+        "ok": True,
+        "weather": weather,
+        "factor": WEATHER_FACTORS[weather],
+        "label": label,
+        **after_change(db)
+    })
+
+
 @bp.route("/api/analytics")
 def analytics():
     return jsonify(build_analytics(get_db()))
