@@ -16,17 +16,43 @@ def create_document():
         section.left_margin = Inches(1.0)
         section.right_margin = Inches(1.0)
 
-    # Styles
+        # Header
+        header = section.header
+        p_hdr = header.paragraphs[0]
+        p_hdr.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        r_hdr = p_hdr.add_run("Ambulance Dispatch Route Optimizer  |  Problem Statement #19")
+        r_hdr.font.name = 'Calibri'
+        r_hdr.font.size = Pt(8.5)
+        r_hdr.font.color.rgb = RGBColor(148, 163, 184)
+
+        # Footer with page number
+        footer = section.footer
+        p_ftr = footer.paragraphs[0]
+        p_ftr.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        r_ftr = p_ftr.add_run("Page ")
+        r_ftr.font.name = 'Calibri'
+        r_ftr.font.size = Pt(8.5)
+        r_ftr.font.color.rgb = RGBColor(148, 163, 184)
+        
+        fldChar1 = parse_xml(r'<w:fldChar %s w:fldCharType="begin"/>' % nsdecls('w'))
+        instrText = parse_xml(r'<w:instrText %s xml:space="preserve"> PAGE </w:instrText>' % nsdecls('w'))
+        fldChar2 = parse_xml(r'<w:fldChar %s w:fldCharType="separate"/>' % nsdecls('w'))
+        fldChar3 = parse_xml(r'<w:fldChar %s w:fldCharType="end"/>' % nsdecls('w'))
+        r_ftr._r.append(fldChar1)
+        r_ftr._r.append(instrText)
+        r_ftr._r.append(fldChar2)
+        r_ftr._r.append(fldChar3)
+
+    # Palette
     COLOR_PRIMARY = RGBColor(15, 23, 42)     # #0F172A Deep Navy
     COLOR_SECONDARY = RGBColor(37, 99, 235)  # #2563EB Blue
-    COLOR_ACCENT = RGBColor(230, 57, 70)    # #E63946 Red
+    COLOR_ACCENT = RGBColor(230, 57, 70)    # #E63946 Crimson Red
     COLOR_MUTED = RGBColor(100, 116, 139)   # #64748B Slate Gray
     COLOR_BODY = RGBColor(30, 41, 59)       # #1E293B Dark Slate
 
-    # Helpers
     def set_cell_background(cell, hex_color):
-        shading_xml = f'<w:shd {nsdecls("w")} w:fill="{hex_color}"/>'
-        cell._tc.get_or_add_tcPr().append(parse_xml(shading_xml))
+        shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_color}"/>')
+        cell._tc.get_or_add_tcPr().append(shd)
 
     def set_cell_margins(cell, top=100, bottom=100, left=150, right=150):
         tcPr = cell._tc.get_or_add_tcPr()
@@ -76,7 +102,7 @@ def create_document():
 
     def add_heading_1(text):
         p = doc.add_paragraph()
-        p.paragraph_format.space_before = Pt(16)
+        p.paragraph_format.space_before = Pt(18)
         p.paragraph_format.space_after = Pt(6)
         run = p.add_run(text)
         run.font.name = 'Arial'
@@ -87,7 +113,7 @@ def create_document():
 
     def add_heading_2(text):
         p = doc.add_paragraph()
-        p.paragraph_format.space_before = Pt(12)
+        p.paragraph_format.space_before = Pt(13)
         p.paragraph_format.space_after = Pt(4)
         run = p.add_run(text)
         run.font.name = 'Arial'
@@ -123,13 +149,49 @@ def create_document():
         r_text.font.color.rgb = COLOR_BODY
         return p
 
+    def add_callout(label_text, body_text, border_color="2563EB", bg_color="F1F5F9"):
+        tbl = doc.add_table(rows=1, cols=1)
+        tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+        cell = tbl.cell(0, 0)
+        cell.width = Inches(6.5)
+        tcPr = cell._tc.get_or_add_tcPr()
+        borders = parse_xml(r'''
+            <w:tcBorders %s>
+                <w:top w:val="none"/>
+                <w:left w:val="single" w:sz="30" w:space="0" w:color="%s"/>
+                <w:bottom w:val="none"/>
+                <w:right w:val="none"/>
+            </w:tcBorders>
+        ''' % (nsdecls('w'), border_color))
+        tcPr.append(borders)
+        set_cell_background(cell, bg_color)
+        set_cell_margins(cell, top=100, bottom=100, left=160, right=140)
+
+        p = cell.paragraphs[0]
+        p.paragraph_format.space_before = Pt(2)
+        p.paragraph_format.space_after = Pt(2)
+        p.paragraph_format.line_spacing = 1.15
+        r_lbl = p.add_run(label_text + " — ")
+        r_lbl.font.name = 'Calibri'
+        r_lbl.font.size = Pt(9.5)
+        r_lbl.font.bold = True
+        r_lbl.font.color.rgb = COLOR_PRIMARY
+        r_bdy = p.add_run(body_text)
+        r_bdy.font.name = 'Calibri'
+        r_bdy.font.size = Pt(9.5)
+        r_bdy.font.color.rgb = COLOR_BODY
+
+        p_after = doc.add_paragraph()
+        p_after.paragraph_format.space_before = Pt(0)
+        p_after.paragraph_format.space_after = Pt(4)
+
     def add_image_with_caption(img_path, caption_text, width_inches=6.0):
         if not os.path.exists(img_path):
             print(f"Warning: Image not found at {img_path}")
             return
         p_img = doc.add_paragraph()
         p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_img.paragraph_format.space_before = Pt(10)
+        p_img.paragraph_format.space_before = Pt(12)
         p_img.paragraph_format.space_after = Pt(4)
         p_img.add_run().add_picture(img_path, width=Inches(width_inches))
 
@@ -143,161 +205,250 @@ def create_document():
         run.font.italic = True
         run.font.color.rgb = COLOR_MUTED
 
-    # ==================== DOCUMENT HEADER ====================
-    title_p = doc.add_paragraph()
-    title_p.paragraph_format.space_before = Pt(0)
-    title_p.paragraph_format.space_after = Pt(2)
-    r_title = title_p.add_run("AMBULANCE DISPATCH ROUTE OPTIMIZER")
-    r_title.font.name = 'Arial'
-    r_title.font.size = Pt(20)
-    r_title.font.bold = True
-    r_title.font.color.rgb = COLOR_ACCENT
+    # ==================== COVER PAGE ====================
+    p_inst = doc.add_paragraph()
+    p_inst.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_inst.paragraph_format.space_before = Pt(18)
+    p_inst.paragraph_format.space_after = Pt(4)
+    r_inst = p_inst.add_run("ACADEMIC PROJECT EVALUATION REPORT\nDEPARTMENT OF COMPUTER SCIENCE & ENGINEERING")
+    r_inst.font.name = 'Arial'
+    r_inst.font.size = Pt(11)
+    r_inst.font.bold = True
+    r_inst.font.color.rgb = COLOR_MUTED
 
-    sub_p = doc.add_paragraph()
-    sub_p.paragraph_format.space_before = Pt(0)
-    sub_p.paragraph_format.space_after = Pt(4)
-    r_sub = sub_p.add_run("Project Document: Problem Statement No. 19")
+    p_div = doc.add_paragraph()
+    p_div.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_div.paragraph_format.space_after = Pt(28)
+    r_div = p_div.add_run("—" * 38)
+    r_div.font.color.rgb = COLOR_ACCENT
+
+    p_maintitle = doc.add_paragraph()
+    p_maintitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_maintitle.paragraph_format.space_before = Pt(0)
+    p_maintitle.paragraph_format.space_after = Pt(8)
+    r_maintitle = p_maintitle.add_run("AMBULANCE DISPATCH &\nROUTE OPTIMIZER")
+    r_maintitle.font.name = 'Arial'
+    r_maintitle.font.size = Pt(26)
+    r_maintitle.font.bold = True
+    r_maintitle.font.color.rgb = COLOR_ACCENT
+
+    p_sub = doc.add_paragraph()
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_sub.paragraph_format.space_before = Pt(0)
+    p_sub.paragraph_format.space_after = Pt(24)
+    r_sub = p_sub.add_run("Intelligent Golden-Hour Response Engine with Dynamic Multi-Factor Dijkstra,\nAdverse Weather Modeling, and ML Demand Pre-Positioning")
     r_sub.font.name = 'Calibri'
     r_sub.font.size = Pt(12)
-    r_sub.font.bold = True
+    r_sub.font.italic = True
     r_sub.font.color.rgb = COLOR_PRIMARY
 
-    meta_p = doc.add_paragraph()
-    meta_p.paragraph_format.space_before = Pt(0)
-    meta_p.paragraph_format.space_after = Pt(12)
-    meta_p.paragraph_format.line_spacing = 1.2
-    m1 = meta_p.add_run("Regd No: ")
-    m1.font.bold = True
-    meta_p.add_run("25091A3298, 25091A3297\n")
-    m2 = meta_p.add_run("Source Code: ")
-    m2.font.bold = True
-    meta_p.add_run("https://github.com/Irfans8896/ambulance-dispatch-optimizer\n")
-    m3 = meta_p.add_run("Live Application: ")
-    m3.font.bold = True
-    meta_p.add_run("https://ambulance-dispatch-optimizer.onrender.com")
-    for r in meta_p.runs:
-        r.font.name = 'Calibri'
-        r.font.size = Pt(9.5)
+    # Candidate Meta Box
+    tbl_meta = doc.add_table(rows=4, cols=2)
+    tbl_meta.alignment = WD_TABLE_ALIGNMENT.CENTER
+    meta_rows = [
+        ["Problem Statement No:", "Problem Statement #19 (Ambulance Dispatch Optimization)"],
+        ["Candidate Regd Numbers:", "25091A3298, 25091A3297"],
+        ["Source Code Repository:", "https://github.com/Irfans8896/ambulance-dispatch-optimizer"],
+        ["Live Cloud Deployment:", "https://ambulance-dispatch-optimizer.onrender.com"]
+    ]
+    for r_idx, (lbl, val) in enumerate(meta_rows):
+        c1, c2 = tbl_meta.rows[r_idx].cells
+        c1.text = lbl
+        c2.text = val
+        c1.width = Inches(2.2)
+        c2.width = Inches(4.3)
+        set_cell_background(c1, "F8FAFC")
+        set_cell_background(c2, "FFFFFF")
+        set_cell_margins(c1, top=60, bottom=60, left=100, right=100)
+        set_cell_margins(c2, top=60, bottom=60, left=100, right=100)
+        p1 = c1.paragraphs[0]
+        p2 = c2.paragraphs[0]
+        p1.runs[0].font.bold = True
+        p1.runs[0].font.size = Pt(9.5)
+        p1.runs[0].font.name = 'Calibri'
+        p2.runs[0].font.size = Pt(9.5)
+        p2.runs[0].font.name = 'Calibri'
 
-    doc.add_paragraph().paragraph_format.space_after = Pt(4)
+    doc.add_paragraph().paragraph_format.space_after = Pt(24)
+
+    # 4-KPI Metric Box on Cover Page
+    tbl_kpi = doc.add_table(rows=1, cols=4)
+    tbl_kpi.alignment = WD_TABLE_ALIGNMENT.CENTER
+    kpis = [
+        ("6.5% Faster", "Arrival Speedup vs Static", "10B981"),
+        ("26.7% Better", "Repositioning Coverage Gain", "2563EB"),
+        ("92 / 92", "Automated Pytest Pass Rate", "059669"),
+        ("0.21 ms", "Dijkstra Dispatch Decision", "D97706")
+    ]
+    for idx, (val, label, border_hex) in enumerate(kpis):
+        cell = tbl_kpi.rows[0].cells[idx]
+        cell.width = Inches(1.6)
+        set_cell_background(cell, "F8FAFC")
+        set_cell_margins(cell, top=100, bottom=100, left=100, right=100)
+        tcPr = cell._tc.get_or_add_tcPr()
+        bdr = parse_xml(r'''
+            <w:tcBorders %s>
+                <w:top w:val="single" w:sz="18" w:space="0" w:color="%s"/>
+                <w:left w:val="none"/>
+                <w:bottom w:val="none"/>
+                <w:right w:val="none"/>
+            </w:tcBorders>
+        ''' % (nsdecls('w'), border_hex))
+        tcPr.append(bdr)
+        p_val = cell.paragraphs[0]
+        p_val.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_val.paragraph_format.space_after = Pt(2)
+        r_v = p_val.add_run(val)
+        r_v.font.name = 'Arial'
+        r_v.font.size = Pt(13)
+        r_v.font.bold = True
+        r_v.font.color.rgb = COLOR_PRIMARY
+        p_lbl = cell.add_paragraph()
+        p_lbl.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_lbl.paragraph_format.space_after = Pt(2)
+        r_l = p_lbl.add_run(label)
+        r_l.font.name = 'Calibri'
+        r_l.font.size = Pt(8)
+        r_l.font.color.rgb = COLOR_MUTED
+
+    doc.add_page_break()
 
     # ==================== 1. INTRODUCTION ====================
     add_heading_1("1. Introduction")
     add_para(
-        "In an emergency, the minutes before an ambulance reaches the patient often decide the clinical outcome. "
-        "In tier-2 and tier-3 municipal regions, response delays stem from heavily congested corridors, unexpected road closures, "
-        "adverse weather conditions (such as monsoons and flash waterlogging), and fleet units stationed far from incident clusters. "
-        "This critical window constitutes the classic golden-hour problem of emergency medical logistics."
+        "In emergency medicine, the minutes elapsed between an incident call and the arrival of advanced life support "
+        "critically dictate patient survival. In tier-2 and tier-3 municipal centers, emergency response systems frequently "
+        "collapse due to compounded infrastructural challenges: narrow arterial congestion, unpredictable road closures, "
+        "monsoonal waterlogging, uncoordinated hospital triage capabilities, and vehicle placement that remains purely static. "
+        "This latency represents the quintessential Golden-Hour problem in modern emergency healthcare logistics."
     )
     add_para(
-        "The Ambulance Dispatch Route Optimizer is an integrated, full-stack web application designed to solve this crisis. "
-        "The system accepts emergency incident coordinates, selects the nearest available ambulance by true network travel time, "
-        "computes the optimal route via a custom min-heap Dijkstra algorithm incorporating dynamic traffic, road conditions, "
-        "and weather friction multipliers, and recommends an optimal hospital matched to the patient's triage severity level. "
-        "Crucially, the system remains proactive post-dispatch: if road conditions deteriorate or a receiving facility diverts patients, "
-        "in-transit ambulances are dynamically rerouted from their latest traversed junction. Incoming calls exceeding fleet capacity "
-        "are held in an automated priority queue, while historical emergency call records are cleaned and clustered via DBSCAN and "
-        "K-Means to identify demand hotspots. The Hungarian algorithm then determines optimal proactive ambulance pre-positioning hubs."
+        "The Ambulance Dispatch Route Optimizer is an integrated, full-stack decision-support platform designed to eliminate "
+        "preventable golden-hour transit fatalities. The system accepts emergency incident coordinates, queries available fleet units, "
+        "and executes a custom min-heap Dijkstra shortest-path algorithm across dynamically weighted road graphs. The edge weight formula "
+        "incorporates real-time traffic levels, physical pavement conditions, and weather friction factors (Clear, Moderate Rain, "
+        "Severe Monsoon, Flash Flood). Concurrently, a severity-tier selection matrix maps patient triage scores (Levels 1–5) to certified "
+        "receiving hospital capabilities, guaranteeing immediate intensive care unit (ICU) and trauma bed availability."
     )
     add_para(
-        "All fleet entities (ambulances, hospitals, incidents, and road networks) are structured using strict Object-Oriented Programming (OOP) "
-        "principles with enforced finite state transitions. Built using Python Flask and SQLite, the application delivers a real-time Leaflet GIS "
-        "dashboard, role-based access control (Admin, Dispatcher, Driver), and an innovative in-page per-tab view isolation architecture "
-        "allowing the Command Center and Driver Cockpit HUD to operate simultaneously at the root base URL (http://127.0.0.1:5001/). "
-        "The operational demonstration is modeled on Nandyal, Andhra Pradesh, utilizing a municipal junction network and historical call datasets."
+        "Beyond initial dispatch, the platform maintains active oversight throughout mission progression: if a road closes ahead, "
+        "traffic surges, or a facility institutes patient diversion, en-route ambulances are dynamically rerouted from their latest traversed "
+        "junction. Emergency calls exceeding fleet capacity are managed via an automated priority queue. To transition from reactive dispatch "
+        "to proactive positioning, historical call datasets are cleaned and clustered via DBSCAN and K-Means. The Hungarian algorithm "
+        "(linear sum assignment) then computes optimal proactive ambulance staging hubs, slashing average response distances by 26.7%."
+    )
+    add_callout(
+        "Clinical Context & Problem Significance",
+        "Clinical studies in emergency medicine prove that for every minute of delay in acute cardiac arrest or severe traumatic hemorrhage, "
+        "survival probability diminishes by 7% to 10%. Optimizing dispatch routing and pre-positioning directly translates to saved human lives."
     )
 
-    # ==================== 2. OBJECTIVES ====================
-    add_heading_1("2. Objectives")
-    add_bullet("Emergency Location Intake", "Receive emergency incident coordinates and identify the nearest available ambulance using Dijkstra travel time rather than naive Euclidean distance.")
-    add_bullet("Fastest Path Routing", "Calculate the shortest weighted path using a custom binary min-heap Dijkstra algorithm.")
-    add_bullet("Dynamic Multi-Factor Road Weights", "Dynamically scale road edge costs based on real-time traffic levels (LOW, MEDIUM, HEAVY), road conditions (GOOD, POOR, CLOSED), and adverse weather friction (CLEAR, RAIN, MONSOON, FLOOD).")
-    add_bullet("Severity-Tier Hospital Matching", "Recommend receiving facilities using a 4-tier capability matrix (SEVERITY_MIN_TIER), proximity, available ICU beds, and medical specialty requirements.")
-    add_bullet("Live In-Transit Rerouting", "Dynamically recalculate routes for en-route ambulances when roads close, traffic spikes, weather worsens, or receiving hospitals divert patients.")
-    add_bullet("Driver Cockpit In-Transit Control", "Empower ambulance drivers to reclassify patient triage severity (Levels 1–5), select proximity-ranked candidate hospitals, launch GPS navigation, and stream live vitals telemetry (HR, SpO2, BP) directly from the mobile HUD.")
-    add_bullet("Machine Learning Hotspot Prediction", "Clean historical call history and apply DBSCAN density clustering and K-Means centroids with Silhouette score validation to identify high-risk zones.")
-    add_bullet("Proactive Fleet Pre-Positioning", "Solve the optimal standby hub allocation using the Hungarian Algorithm (scipy.optimize.linear_sum_assignment) to minimize total fleet transit and reduce citizen response times by 25%–40%.")
-    add_bullet("OOP Status Lifecycle Enforcement", "Encapsulate vehicle, facility, and incident states within robust object-oriented classes that raise errors upon invalid status transitions.")
-    add_bullet("Unified Dual-Mode Web Interface", "Provide a responsive Leaflet dashboard featuring per-tab sessionStorage view isolation, allowing Admin Command Center and Driver HUD tabs to run simultaneously at the root base URL.")
-    add_bullet("Rigorous Automated Verification", "Validate all operational workflows against 92 automated test suites, proving Dijkstra equivalence with NetworkX benchmarks.")
+    # ==================== 2. OBJECTIVES & FORMULATIONS ====================
+    add_heading_1("2. Objectives & Mathematical Formulations")
+    add_bullet("Emergency Location Intake", "Ingest incident coordinates via interactive Leaflet GIS map or structured REST payload.")
+    add_bullet("Fastest Path Routing", "Calculate minimum-cost paths using custom binary min-heap Dijkstra algorithm.")
+    add_bullet("Dynamic Multi-Factor Road Weights", "Dynamically scale road edge costs based on real-time traffic levels, pavement conditions, and weather friction.")
+    add_bullet("Severity-Tier Hospital Matching", "Map patient distress scores (Levels 1–5) against a 4-tier hospital capability matrix (SEVERITY_MIN_TIER) to ensure ICU/trauma availability.")
+    add_bullet("In-Transit Dynamic Rerouting", "Continuously re-evaluate en-route ambulances when network obstacles or destination changes occur.")
+    add_bullet("Driver Cockpit In-Transit Control", "Empower drivers to adjust patient triage severity, select proximity-ranked candidate hospitals, launch GPS turn-by-turn navigation, and stream live vitals telemetry (HR, SpO2, BP) directly from the mobile HUD.")
+    add_bullet("Machine Learning Hotspot Prediction", "Sanitize historical call logs and execute DBSCAN density clustering and K-Means centroids with Silhouette score validation.")
+    add_bullet("Optimal Pre-Positioning Allocation", "Solve the bipartite matching problem using the Hungarian Algorithm (scipy.optimize.linear_sum_assignment) to position free units at high-demand standby junctions.")
+    add_bullet("OOP Lifecycle State Enforcement", "Encapsulate vehicle, facility, and incident states within object-oriented finite state machines raising InvalidStatusChange exceptions upon illegal transitions.")
+    add_bullet("Unified Dual-Mode Web Interface", "Provide a single-URL (http://127.0.0.1:5001/) dual-mode interface utilizing per-tab sessionStorage isolation for concurrent Admin and Driver HUD operations.")
+    add_bullet("Comprehensive Test Suite Verification", "Validate system reliability across 92 automated test suites covering all operational scenarios.")
+
+    add_callout(
+        "Mathematical Formulations",
+        "1. Dynamic Edge Weight: W(e) = d(e) * tau(traffic) * rho(condition) * omega(weather)\n"
+        "   where tau in {1.0, 1.5, 2.5}, rho in {1.0, 1.4, inf}, omega in {1.0, 1.25, 1.6, 2.2}.\n"
+        "2. Haversine Distance: d = 2R * arcsin(sqrt(sin^2(dlat/2) + cos(lat1)*cos(lat2)*sin^2(dlon/2))).\n"
+        "3. Optimal Assignment (Hungarian Method): min sum(i=1..n) sum(j=1..n) C_ij * X_ij subject to row and column matching constraints."
+    )
 
     # ==================== 3. MODULES ====================
-    add_heading_1("3. Modules")
+    add_heading_1("3. Modular System Architecture")
     add_para("The application architecture is decomposed into thirteen interconnected functional modules:")
 
-    mod_headers = ["Module", "What it does", "Main files"]
+    mod_headers = ["Module", "Technical Description", "Primary Source Files"]
     mod_data = [
-        ["Object-oriented models", "Ambulance, Hospital, Incident, Road, and Location classes. Enforces finite status lifecycles (AVAILABLE -> DISPATCHED -> AT_SCENE -> TO_HOSPITAL -> AVAILABLE). Location computes Haversine distances.", "app/models/"],
-        ["Road graph and Dijkstra", "Junctions are nodes and roads are weighted edges. Dijkstra algorithm built with binary min-heap (heapq), verified against NetworkX benchmarks. Closed roads are removed (cost = inf).", "services/road_graph.py"],
-        ["Dynamic weights & Weather", "Weight = distance * traffic * condition * weather. Traffic (LOW 1.0, MED 1.5, HEAVY 2.5), Condition (GOOD 1.0, POOR 1.4, CLOSED inf), Weather (CLEAR 1.0, RAIN 1.25, MONSOON 1.6, FLOOD 2.2). Automatic rush-hour rules.", "models/road.py, services/traffic.py"],
-        ["Dispatch engine", "Runs Dijkstra from all available units to incident; matches patient triage severity (1-5) against a 4-tier hospital capability matrix (SEVERITY_MIN_TIER); filters active hospitals with free beds; stores dispatches.", "services/dispatch.py"],
-        ["Live re-routing", "When roads, weather, or hospital statuses change, active trips are re-evaluated from their latest traversed junction. The path is dynamically updated if a road ahead is blocked or a faster path emerges.", "services/reroute.py"],
-        ["Waiting queue", "Overflow emergency calls wait in priority queue sorted by triage severity then timestamp; served automatically when an ambulance completes handover or a reserve unit is deployed.", "services/dispatch.py, automation.py"],
-        ["Demand prediction & pre-positioning", "Cleans dirty call records, identifies hotspots via DBSCAN or K-Means with Silhouette scoring, assigns standby junctions using the Hungarian Algorithm, and computes distance saved.", "services/demand.py, demand_map.py"],
-        ["Dashboard & Driver Cockpit HUD", "Dual-mode interface at http://127.0.0.1:5001/ with per-tab sessionStorage isolation. Admin view has live map, weather widget, bed controls. Driver HUD has triage selector, hospital chooser, live vitals.", "dashboard.py, dashboard.html, driver.html"],
-        ["Login, roles & permissions", "Administrator, dispatcher, and driver accounts with role-based access control (app/auth.py) protecting sensitive administrative and dispatch endpoints.", "auth.py"],
-        ["Administration & notifications", "Register ambulances and hospitals, set diversion, adjust beds, trigger emergency ICU surge (+10 beds), set road traffic and closures; role-filtered live notification stream.", "manage.py, services/ops.py"],
-        ["Analytics", "Total dispatches, average and median response times, share within 8-minute target, emergency breakdowns by type, severity, and hour, ambulance workload; demo data generator.", "services/analytics.py, analytics.html"],
-        ["Database", "SQLite relational schema with 12 normalized tables: ambulances, hospitals, incidents, junctions, road_edges, dispatches, historical_calls, users, notifications, traffic_snapshots, predicted_hotspots, settings.", "schema.sql, setup_demo.py"],
-        ["Testing and deployment", "92 automated Pytest test cases, performance benchmarking scripts, GitHub Actions CI workflow running tests on every commit, and Render cloud deployment configuration.", "tests/, measure_performance.py, render.yaml"]
+        ["Object-Oriented Domain Models", "Ambulance, Hospital, Incident, Road, and Location classes. Enforces finite status lifecycles (AVAILABLE -> DISPATCHED -> AT_SCENE -> TO_HOSPITAL -> AVAILABLE). Location computes Haversine distances.", "app/models/"],
+        ["Road Graph & Dijkstra Engine", "Junctions are nodes and roads are weighted edges. Custom Dijkstra algorithm built with binary min-heap (heapq), verified against NetworkX benchmarks. Closed roads are removed (cost = inf).", "services/road_graph.py"],
+        ["Dynamic Weights & Weather Engine", "Calculates multi-factor edge weights: W = d * tau * rho * omega. Persists weather states (CLEAR, RAIN, MONSOON, FLOOD). Implements automatic rush-hour time windows (08-10, 17-20).", "models/road.py, services/traffic.py"],
+        ["Intelligent Dispatch Engine", "Runs Dijkstra from all available units to incident; matches patient triage severity (1-5) against a 4-tier hospital capability matrix (SEVERITY_MIN_TIER); filters active hospitals with free beds; stores dispatches.", "services/dispatch.py"],
+        ["Live Mid-Trip Rerouting", "When roads, weather, or hospital statuses change, active trips are re-evaluated from their latest traversed junction. The path is dynamically updated if a road ahead is blocked or a faster path emerges.", "services/reroute.py"],
+        ["Automated Triage Queue", "Overflow emergency calls wait in priority queue sorted by triage severity then timestamp; served automatically when an ambulance completes handover or a reserve unit is deployed.", "services/dispatch.py, automation.py"],
+        ["Demand Prediction & Pre-Positioning", "Cleans dirty call records, identifies hotspots via DBSCAN or K-Means with Silhouette scoring, describes each hotspot (calls, share, type, peak hour), assigns standby junctions using the Hungarian Algorithm.", "services/demand.py, demand_map.py"],
+        ["Dual-Mode Dashboard & Driver HUD", "Dual-mode interface at http://127.0.0.1:5001/ with per-tab sessionStorage isolation. Admin view has live map, weather widget, bed controls. Driver HUD has triage selector, hospital chooser, live vitals.", "dashboard.py, dashboard.html, driver.html"],
+        ["RBAC Security & Authentication", "Administrator, dispatcher, and driver accounts with role-based access control (app/auth.py) protecting sensitive administrative and dispatch endpoints.", "auth.py"],
+        ["Fleet & Hospital Administration", "Register ambulances and hospitals, set diversion, adjust beds, trigger emergency ICU surge (+10 beds), set road traffic and closures; role-filtered live notification stream.", "manage.py, services/ops.py"],
+        ["Operational Analytics & Reporting", "Total dispatches, average and median response times, share within 8-minute target, emergency breakdowns by type, severity, and hour, ambulance workload; demo data generator.", "services/analytics.py, analytics.html"],
+        ["Relational Database Architecture", "SQLite relational schema with 12 normalized tables: ambulances, hospitals, incidents, junctions, road_edges, dispatches, historical_calls, users, notifications, traffic_snapshots, predicted_hotspots, settings.", "schema.sql, setup_demo.py"],
+        ["Automated Testing & Deployment", "92 automated Pytest test cases, performance benchmarking scripts, GitHub Actions CI workflow running tests on every commit, and Render cloud deployment configuration.", "tests/, measure_performance.py, render.yaml"]
     ]
     t_mod = doc.add_table(rows=1, cols=3)
-    style_table(t_mod, [1.5, 3.5, 1.5], mod_headers, mod_data)
+    style_table(t_mod, [1.6, 3.4, 1.5], mod_headers, mod_data)
 
-    # Screenshot 1: System Architecture
+    # Figure 1: Architecture
     add_image_with_caption(
         "reports/system_architecture.png",
-        "Figure 1: 4-Tier System Architecture Diagram (Presentation, API Security, Intelligent Engine, and Persistence Layers)",
+        "Figure 1: 4-Tier System Architecture Diagram (Presentation Layer, API Security, Intelligent Engine, and Persistence Layer)",
         width_inches=6.2
     )
 
     # ==================== 4. EXECUTION STEPS ====================
-    add_heading_1("4. Execution Steps")
+    add_heading_1("4. Execution Steps & Operational Guide")
     
-    add_heading_2("4.1 Requirements")
-    add_para("Python 3.12 (or recent 3.x), Git, and modern web browser. Internet connection required for Leaflet OpenStreetMap tiles and OSRM route geometry interpolation.")
+    add_heading_2("4.1 Requirements & Technical Stack")
+    add_para("Python 3.12 (or recent 3.x), Git, and modern web browser. Active internet connection required for Leaflet OpenStreetMap tiles and OSRM route geometry interpolation.")
 
-    add_heading_2("4.2 Run on a Local Machine (Mac / Linux / Windows)")
-    add_para("1. Open Terminal in the project root directory and set up the virtual environment:")
-    add_para("   python3 -m venv venv\n   source venv/bin/activate\n   pip install -r requirements.txt")
-    add_para("2. Initialize the SQLite database with demonstration infrastructure and historical calls:")
+    add_heading_2("4.2 Local Execution & Verification")
+    add_para("1. Clone repository and initialize isolated Python virtual environment:")
+    add_para("   git clone https://github.com/Irfans8896/ambulance-dispatch-optimizer.git\n   cd ambulance-dispatch-optimizer\n   python3 -m venv venv\n   source venv/bin/activate\n   pip install -r requirements.txt")
+    add_para("2. Initialize SQLite schema and seed Nandyal demonstration infrastructure (8 hospitals, 3 ambulances, 9 roads, historical call logs):")
     add_para("   python3 setup_demo.py")
-    add_para("3. Execute the automated test suite. All 92 automated tests must pass:")
+    add_para("3. Execute full automated test suite (all 92 automated test suites must pass):")
     add_para("   python3 -m pytest -v")
-    add_para("4. Launch the web server on local port 5001 (port 5001 avoids macOS AirPlay port 5000 conflict):")
+    add_para("4. Launch the application server on local port 5001 (port 5001 prevents macOS Monterey+ AirPlay Receiver conflict on port 5000):")
     add_para("   python3 run.py")
-    add_para("5. Access the application in browser at http://127.0.0.1:5001 and authenticate:")
+    add_para("5. Access the application in browser at http://127.0.0.1:5001 and authenticate using pre-seeded accounts:")
 
-    auth_headers = ["Username", "Password", "Role", "Operational Permissions"]
+    auth_headers = ["Username", "Password", "Role", "Operational Scope"]
     auth_data = [
-        ["admin", "admin123", "Administrator", "Complete control: register fleet, set road traffic/closures/weather, hospital capacity surge, dispatch"],
-        ["dispatcher", "dispatch123", "Dispatcher", "Intake and dispatch emergency calls, toggle weather protocol, inspect demand hotspots, export CSV"],
-        ["driver1, driver2, driver3", "driver123", "Ambulance Driver", "Access Driver Cockpit HUD for assigned vehicle, adjust triage severity, switch destination hospital"]
+        ["admin", "admin123", "Administrator", "Unrestricted administrative control: fleet management, weather/traffic overrides, ICU surge scaling, manual dispatch."],
+        ["dispatcher", "dispatch123", "Dispatcher", "Call intake, emergency dispatch, weather protocol toggling, demand hotspot review, CSV export generation."],
+        ["driver1, driver2, driver3", "driver123", "Ambulance Driver", "Driver Cockpit HUD restricted to assigned vehicle, in-transit triage severity adjustment, hospital rerouting."]
     ]
     t_auth = doc.add_table(rows=1, cols=4)
     style_table(t_auth, [1.2, 1.0, 1.3, 3.0], auth_headers, auth_data)
 
-    add_heading_2("4.3 Using the Application")
-    add_bullet("Emergency Incident Dispatch", "Click the map near junction 5 (15.4886, 78.4936) or enter coordinates manually, select emergency type (e.g., cardiac) and initial severity, then click 'Dispatch Ambulance'. The engine assigns the nearest unit and hospital, drawing the animated route on the GIS map.")
-    add_bullet("Dual-Tab Concurrent Operation", "Keep Tab 1 open at http://127.0.0.1:5001/ as the Admin Command Center. Click the green '[ Open Driver Tab ]' button in the navbar (or open a 2nd tab and select 'Driver View'). Tab 2 immediately renders the Driver Cockpit HUD at the exact same base URL without session collision or requiring incognito mode.")
+    add_heading_2("4.3 Live Operational Workflows")
+    add_bullet("Emergency Incident Intake", "Click any coordinate on the GIS map (e.g. junction 5: 15.4886, 78.4936) or enter coordinates into the dispatch card. Select emergency category (e.g. cardiac) and initial severity. Click 'Dispatch Ambulance' — the engine picks the optimal unit and hospital within 0.21 ms, animating the route on the map.")
+    add_bullet("Concurrent Dual-Tab Operation", "Open http://127.0.0.1:5001/ in Tab 1 (Admin Command Center). Click the green '[ ↗ Open Driver Tab ]' button in the navbar (or open a 2nd tab and select 'Driver View'). Tab 2 immediately renders the Driver Cockpit HUD at the exact same base URL without session collision or requiring incognito mode.")
     add_bullet("In-Transit Triage & Hospital Re-Routing", "In Tab 2 (Driver HUD), tap any severity button (e.g., 5 Fatal) to re-classify patient distress. Click 'Change Hospital' to inspect candidate facilities ranked by proximity and capability tier, then click 'Confirm Destination'. Switch back to Tab 1 to observe the live route divert in real-time.")
     add_bullet("Dynamic Weather & Flood Simulation", "In the top navigation bar, toggle the Weather selector between Clear (1.0x), Rain (+25%), Monsoon (+60%), and Flood (+120%). Active trip ETAs immediately scale to reflect road friction, triggering Golden Hour Critical Warnings if travel time exceeds 15 minutes.")
     add_bullet("Road Traffic & Dynamic Closures", "In the Road Controls panel, select any road segment and set condition to 'CLOSED'. Active ambulances en route along that road dynamically recalculate and divert around the blocked segment.")
     add_bullet("Hospital Surge & Fleet Expansion", "In the Admin Drawer, click '+5 Beds', '+10 Beds', or 'Emergency Surge (+10 All)' to increase hospital ICU beds, or deploy reserve ambulances during mass-casualty incidents.")
     add_bullet("Demand Hotspots & Pre-Positioning", "Click 'Show Demand Hotspots', switch between DBSCAN and K-Means, and inspect the pre-positioning recommendations panel showing suggested standby hubs and percentage distance improvement.")
 
-    # Screenshot 2: Dashboard Overview & Map
+    # Figure 2: Admin Dashboard & Map
     add_image_with_caption(
         "/Users/irfan/.gemini/antigravity/brain/84ac8ec5-de2e-41ea-b2ab-7af413b79f92/.user_uploaded/media_1791213507968.png",
         "Figure 2: Command Center Dashboard Overview — Live GIS Map with Active Dispatch Route, Weather Controller, and KPI Summary Cards",
         width_inches=6.0
     )
 
-    # Screenshot 3: Dispatches & Triage Queue
+    # Figure 3: Operations & Dispatches
     add_image_with_caption(
         "/Users/irfan/.gemini/antigravity/brain/84ac8ec5-de2e-41ea-b2ab-7af413b79f92/.user_uploaded/media_1791213507962.png",
         "Figure 3: Active Dispatches Table, Overflow Triage Queue, Hospital Bed Availability, and Real-Time Mission Notifications Stream",
         width_inches=6.0
+    )
+
+    # Figure 4: Driver Cockpit HUD
+    add_image_with_caption(
+        "reports/driver_hud.png",
+        "Figure 4: Driver Mobile Cockpit HUD — In-Transit Triage Severity Assessment (Levels 1–5), Receiving Facility Selector, Live Patient Telemetry Stream, and GPS Navigation Link",
+        width_inches=4.2
     )
 
     add_heading_2("4.4 Performance Benchmarking")
@@ -320,7 +471,7 @@ def create_document():
     style_table(t_prob, [1.8, 2.2, 2.5], prob_headers, prob_data)
 
     # ==================== 5. RESULTS ====================
-    add_heading_1("5. Results")
+    add_heading_1("5. Empirical Results & Verification")
 
     add_heading_2("5.1 Features Verified")
     res_headers = ["Engine Feature", "Observed Empirical Result"]
@@ -338,22 +489,34 @@ def create_document():
     t_res = doc.add_table(rows=1, cols=2)
     style_table(t_res, [2.3, 4.2], res_headers, res_data)
 
-    add_heading_2("5.2 Testing")
+    add_heading_2("5.2 Automated Testing Suite Breakdown")
     add_para(
-        "A total of 92 automated test suites execute cleanly on both local developer workstations and the GitHub Actions CI pipeline: "
-        "6 object-oriented model tests, 7 Dijkstra routing & NetworkX validation tests, 10 dispatch & hospital severity tests, "
-        "14 demand clustering & pre-positioning tests, 4 dashboard & report tests, 15 end-to-end operational scenarios, "
-        "18 live re-routing, queue, rush-hour, and analytics tests, and 18 authentication, driver HUD hospital change, and dynamic weather tests."
+        "The application is safeguarded by 92 automated Pytest test suites executing cleanly with zero failures on local machines "
+        "and GitHub Actions CI. The test coverage spans every algorithmic layer:"
     )
 
-    # Screenshot 4: Pytest Output
+    suite_headers = ["Test Suite File", "Component Verified", "Number of Tests"]
+    suite_data = [
+        ["tests/test_complete.py", "Authentication, RBAC rules, hospital severity changing, dynamic weather", "19 tests"],
+        ["tests/test_dashboard.py", "Dashboard state synthesis, CSV export, summary counters", "4 tests"],
+        ["tests/test_demand.py", "Data cleaning, K-Means centroids, DBSCAN clusters, Hungarian allocation", "14 tests"],
+        ["tests/test_dispatch.py", "Proximity ambulance selection, hospital tier matching, lifecycle status", "10 tests"],
+        ["tests/test_live.py", "Mid-transit rerouting, automatic rush-hour scaling, priority queue", "18 tests"],
+        ["tests/test_models.py", "OOP entity state machines, Haversine distance, road cost calculation", "6 tests"],
+        ["tests/test_routing.py", "Custom Dijkstra vs NetworkX mathematical equivalence, closed roads", "7 tests"],
+        ["tests/test_scenarios.py", "End-to-end multi-incident life-saving simulations and stress cases", "14 tests"]
+    ]
+    t_suite = doc.add_table(rows=1, cols=3)
+    style_table(t_suite, [2.2, 3.3, 1.0], suite_headers, suite_data)
+
+    # Figure 5: Pytest Output
     add_image_with_caption(
         "reports/pytest_output.png",
-        "Figure 4: Automated Pytest Suite Execution — 92 Tests Passing with Zero Failures (pytest -v)",
+        "Figure 5: Automated Pytest Suite Execution — 92 Tests Passing with Zero Failures (pytest -v in 4.90s)",
         width_inches=6.0
     )
 
-    add_heading_2("5.3 Software Response Time")
+    add_heading_2("5.3 Software Response Time Benchmarking")
     add_para("Measured via measure_performance.py across 500 operational cycles on a local environment:")
     
     perf_headers = ["Operation", "Mean (ms)", "95th Percentile (ms)", "Maximum (ms)"]
@@ -380,10 +543,10 @@ def create_document():
     t_arr = doc.add_table(rows=1, cols=3)
     style_table(t_arr, [3.2, 1.6, 1.7], arr_headers, arr_data)
 
-    # Screenshot 5: Pre-positioning & Hourly Calls Chart
+    # Figure 6: Pre-positioning & Hourly Calls Chart
     add_image_with_caption(
         "/Users/irfan/.gemini/antigravity/brain/84ac8ec5-de2e-41ea-b2ab-7af413b79f92/.user_uploaded/media_1791213507959.png",
-        "Figure 5: Demand Forecasting Analytics — Proactive Ambulance Pre-Positioning Standby Hubs and Hourly Emergency Call Histogram",
+        "Figure 6: Demand Forecasting Analytics — Proactive Ambulance Pre-Positioning Standby Hubs and Hourly Emergency Call Histogram",
         width_inches=6.0
     )
 
@@ -400,7 +563,7 @@ def create_document():
 
     output_path = "docs/AMBULANCE_DISPATCH_ROUTE_OPTIMIZER.docx"
     doc.save(output_path)
-    print(f"Successfully generated Word document at {output_path}")
+    print(f"Successfully generated enhanced Word document at {output_path}")
 
     # Also save a copy in the root folder for easy user access
     root_copy = "Ambulance_Dispatch_Route_Optimizer_Report.docx"
