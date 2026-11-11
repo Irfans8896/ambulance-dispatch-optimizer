@@ -4,11 +4,17 @@ import json
 import time
 import math
 import shutil
+import asyncio
 import subprocess
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 import imageio_ffmpeg
 from playwright.sync_api import sync_playwright
+
+try:
+    import edge_tts
+except ImportError:
+    edge_tts = None
 
 BASE_DIR = Path("/Users/irfan/ambulance-dispatch-optimizer").resolve()
 WORK_DIR = Path("/tmp/demo_video_work")
@@ -185,21 +191,36 @@ def load_perf_summary():
 
 
 def synth_voice(scene_id, text):
-    """Synthesizes clear studio-mastered voiceover with 350ms lead-in padding."""
+    """Synthesizes clear studio-mastered Indian English voiceover (en-IN-PrabhatNeural, macOS Rishi fallback)."""
+    spoken_text = text.replace("Dijkstra", "Dykstra").replace("Pytest", "Py-test")
+    mp3_path = AUDIO_DIR / f"{scene_id}.mp3"
     aiff_path = AUDIO_DIR / f"{scene_id}.aiff"
     wav_path = AUDIO_DIR / f"{scene_id}.wav"
-    run_cmd(["/usr/bin/say", "-v", "Daniel", "-r", "176", "-o", str(aiff_path), text])
+
+    raw_src = None
+    if edge_tts is not None:
+        try:
+            asyncio.run(edge_tts.Communicate(spoken_text, "en-IN-PrabhatNeural", rate="+8%").save(str(mp3_path)))
+            if mp3_path.exists() and mp3_path.stat().st_size > 1000:
+                raw_src = mp3_path
+        except Exception as exc:
+            print(f"    edge-tts unavailable for {scene_id} ({exc}), falling back to macOS Rishi en_IN...")
+
+    if raw_src is None:
+        run_cmd(["/usr/bin/say", "-v", "Rishi", "-r", "174", "-o", str(aiff_path), spoken_text])
+        raw_src = aiff_path
+
     # Warm broadcast EQ, gentle compression, consistent loudness (-16 LUFS), and 350ms lead silence for smooth xfade
     af = (
         "adelay=350|350,"
         "highpass=f=85,"
-        "equalizer=f=240:t=q:w=1.2:g=2.0,"
-        "equalizer=f=3200:t=q:w=1.4:g=2.4,"
+        "equalizer=f=240:t=q:w=1.2:g=1.8,"
+        "equalizer=f=3200:t=q:w=1.4:g=2.2,"
         "acompressor=threshold=-18dB:ratio=2.8:attack=5:release=60,"
         "loudnorm=I=-16:TP=-1.5:LRA=7"
     )
     run_cmd([
-        FFMPEG, "-y", "-i", str(aiff_path),
+        FFMPEG, "-y", "-i", str(raw_src),
         "-af", af,
         "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", str(wav_path)
     ])
@@ -1170,8 +1191,9 @@ app.run(host="127.0.0.1", port={PORT}, debug=False, use_reloader=False)
         print(f"  Rendered {sid}")
 
         # ------------------------------------------------------------------
-        # 5. Scene 09: Verified KPI Outro Summary Slate
+        # 5. Scene 09: Verified KPI Outro Summary Slate (synced after Scene 08 live run)
         # ------------------------------------------------------------------
+        perf = load_perf_summary()
         outro_png = FRAMES_DIR / "09_outro.png"
         make_outro_slide(outro_png, perf)
         scene_outputs.append(render_static_scene("09_outro", outro_png, voices[9][0], voices[9][1], extra_pad=1.2))
