@@ -1884,6 +1884,7 @@ $('recheckBtn').onclick = async () => {
 };
 
 // ==================== TAB-ISOLATED VIEW MODE & DRIVER HUD ====================
+const BADGE = {AVAILABLE: 'success', DISPATCHED: 'warning', AT_SCENE: 'danger', TO_HOSPITAL: 'primary'};
 let hudTripId = null;
 let hudCurrentTrip = null;
 let hudSelectedAmbId = parseInt(sessionStorage.getItem('preferred_ambulance_id') || '1', 10);
