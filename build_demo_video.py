@@ -191,14 +191,18 @@ def load_perf_summary():
 
 
 def synth_voice(scene_id, text):
-    """Synthesizes clear studio-mastered Indian English voiceover (en-IN-PrabhatNeural, macOS Rishi fallback)."""
+    """Synthesizes clear studio-mastered narration (custom cloned voice preferred, edge-tts/Rishi fallback)."""
     spoken_text = text.replace("Dijkstra", "Dykstra").replace("Pytest", "Py-test")
+    custom_mp3 = BASE_DIR / "assets" / "custom_voice" / f"{scene_id}.mp3"
     mp3_path = AUDIO_DIR / f"{scene_id}.mp3"
     aiff_path = AUDIO_DIR / f"{scene_id}.aiff"
     wav_path = AUDIO_DIR / f"{scene_id}.wav"
 
     raw_src = None
-    if edge_tts is not None:
+    if custom_mp3.exists() and custom_mp3.stat().st_size > 1000:
+        raw_src = custom_mp3
+
+    if raw_src is None and edge_tts is not None:
         try:
             asyncio.run(edge_tts.Communicate(spoken_text, "en-IN-PrabhatNeural", rate="+8%").save(str(mp3_path)))
             if mp3_path.exists() and mp3_path.stat().st_size > 1000:
